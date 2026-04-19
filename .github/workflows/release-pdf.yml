@@ -1,0 +1,68 @@
+name: Build PDF for Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload PDF to (e.g. v94). Leave empty to only build an artifact."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-pdf:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install LibreOffice
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice
+
+      - name: Convert DOCX -> PDF
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+
+          DOCX_FILE="$(ls -1 *.docx | sort -V | tail -n 1)"
+          echo "Using DOCX: ${DOCX_FILE}"
+
+          SAFE_DOCX="document.docx"
+          cp "${DOCX_FILE}" "${SAFE_DOCX}"
+
+          soffice --headless --nologo --nolockcheck --nodefault --nofirststartwizard \
+            --convert-to pdf --outdir out "${SAFE_DOCX}"
+
+          PDF_OUT="out/${DOCX_FILE%.docx}.pdf"
+          mv "out/${SAFE_DOCX%.docx}.pdf" "${PDF_OUT}"
+          echo "PDF_OUT=${PDF_OUT}" >> "${GITHUB_ENV}"
+
+      - name: Upload PDF to Release (release event)
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.PDF_OUT }}
+
+      - name: Upload PDF to Release (manual with tag)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: ${{ env.PDF_OUT }}
+
+      - name: Upload PDF as artifact (manual)
+        if: github.event_name == 'workflow_dispatch' && inputs.tag == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf
+          path: out/*.pdf
+
