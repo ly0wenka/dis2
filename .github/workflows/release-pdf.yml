@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag to upload PDF to (e.g. v94). Leave empty to only build an artifact."
+        description: "Release tag to upload PDF to (e.g. 97). Leave empty to only build an artifact."
         required: false
         type: string
 
@@ -65,4 +65,3 @@ jobs:
         with:
           name: pdf
           path: out/*.pdf
-
