@@ -184,17 +184,17 @@ function Fix-BareCitationListsInString {
     if (-not $m.Success) { break }
     $list = $m.Groups["list"].Value
     if ($list -match "\.") {
-      $Stats.Value.citation_lists_skipped_mixed++
+      $Stats.Value["citation_lists_skipped_mixed"]++
       break
     }
     $nums = ($list -split ";") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
-    if (($nums | Where-Object { $_ -notmatch "^\d+$" }).Count -gt 0) {
-      $Stats.Value.citation_lists_skipped_mixed++
+    if (@($nums | Where-Object { $_ -notmatch "^\d+$" }).Count -gt 0) {
+      $Stats.Value["citation_lists_skipped_mixed"]++
       break
     }
     $repl = "[" + (($nums | ForEach-Object { [int]$_ }) -join ", ") + "]"
     $s = $s.Substring(0, $m.Index) + $repl + $s.Substring($m.Index + $m.Length)
-    $Stats.Value.citation_lists_wrapped++
+    $Stats.Value["citation_lists_wrapped"]++
   }
   return $s
 }
