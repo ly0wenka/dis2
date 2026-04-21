@@ -203,7 +203,8 @@ try {
       Insert-ParagraphAfter -AfterIndex $idx445 -Text "Параметри руху для локальної моделі оцінювання руху наведено в розд. 2, формули (2.11)-(2.24)."
     }
     $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
-    $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+    $idx445 = Find-ParaIndexByPrefix -Prefix "4.4.5" -StartAt $idx441
+    $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt ($idx445 + 1)
     if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
 
     if ($Remove44Formulas) {
@@ -232,7 +233,8 @@ try {
     # Refresh
     $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
     $idx441 = Find-ParaIndexByPrefix -Prefix "4.4.1" -StartAt $startSearchAt
-    $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+    $idx445 = Find-ParaIndexByPrefix -Prefix "4.4.5" -StartAt $idx441
+    $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt ($idx445 + 1)
     if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
 
     function Para-HasNumPr {
@@ -291,7 +293,8 @@ try {
           [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
           $stats.fix44_panel_dupes_removed++
           $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
-          $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+          $idx445 = Find-ParaIndexByPrefix -Prefix "4.4.5" -StartAt $idx441
+          $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt ($idx445 + 1)
           if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
           continue
         }
@@ -317,7 +320,8 @@ try {
           [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
           $stats.fix44_short_paras_merged++
           $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
-          $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+          $idx445 = Find-ParaIndexByPrefix -Prefix "4.4.5" -StartAt $idx441
+          $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt ($idx445 + 1)
           if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
           continue
         }
