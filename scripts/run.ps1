@@ -32,7 +32,7 @@ function Derive-OutputDocxFromInput {
     [Parameter(Mandatory = $true)][int]$TargetVersion
   )
   $leaf = [System.IO.Path]::GetFileName($InputPath)
-  $m = [regex]::Match($leaf, "^(?<base>.+_)(?<num>\\d+)\\.docx$", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  $m = [regex]::Match($leaf, "^(?<base>.+_)(?<num>\d+)\.docx$", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
   if (-not $m.Success) {
     throw "InputDocx leaf name must match '*_<N>.docx' when -TargetVersion is used."
   }
@@ -119,4 +119,3 @@ if ($NoGit) {
 } else {
   Write-Host ("DONE: pushed tag {0} and file {1}" -f $bump.version_to, (Split-Path -Leaf $outDocx))
 }
-

@@ -126,7 +126,7 @@ function Find-NextHeadingIndexByRegex {
 function Try-ParseFigureCaption {
   param([Parameter(Mandatory = $true)][string]$Text)
   # Example: "Рис. 4.62 — Farneback_..."
-  $m = [regex]::Match($Text, "^Рис\\.\\s*4\\.(\\d+)\\s*[\\u2014\\u2013-]\\s*(.+)$")
+  $m = [regex]::Match($Text, "^Рис\.\s*4\.(\d+)\s*[\u2014\u2013-]\s*(.+)$")
   if (-not $m.Success) { return $null }
   $figNo = [int]$m.Groups[1].Value
   $tail = $m.Groups[2].Value.Trim()
@@ -149,7 +149,7 @@ function Is-BoilerplateParagraphText {
   if ($s.StartsWith("ліва панель") -or $s.StartsWith("центральна панель") -or $s.StartsWith("права панель")) { return $true }
   if ($s.StartsWith("на лівій панелі") -or $s.StartsWith("на центральній панелі") -or $s.StartsWith("на правій панелі")) { return $true }
   if ($s.StartsWith("детекція") -or $s.StartsWith("виявлено") -or $s.StartsWith("у нижній частині")) { return $true }
-  if ($s -match "\\bobjects\\s+detected\\b") { return $true }
+  if ($s -match "\bobjects\s+detected\b") { return $true }
   return $false
 }
 
@@ -157,18 +157,18 @@ function Clean-BoilerplateFromText {
   param([Parameter(Mandatory = $true)][string]$Text)
   $rx = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
   $t = $Text
-  $t = [regex]::Replace($t, "Детекція\\s+об’єктів\\.?\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Виявлено\\s+\\d+\\s+об.?’?єктів\\s+моделлю\\s+DETR\\.?\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Детекція\\s+\\d+\\s+об.?’?єктів\\s+моделлю\\s+DETR\\.?\\s*", "", $rx)
-  $t = [regex]::Replace($t, "У\\s+нижній\\s+частині.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Ліва\\s+панель.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Центральна\\s+панель.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Права\\s+панель.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "На\\s+лівій\\s+панелі.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "На\\s+центральній\\s+панелі.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "На\\s+правій\\s+панелі.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "\\b\\d+\\s+objects\\s+detected\\b\\.?\\s*", "", $rx)
-  $t = ($t -replace "\\s{2,}", " ").Trim()
+  $t = [regex]::Replace($t, "Детекція\s+об’єктів\.?\s*", "", $rx)
+  $t = [regex]::Replace($t, "Виявлено\s+\d+\s+об.?’?єктів\s+моделлю\s+DETR\.?\s*", "", $rx)
+  $t = [regex]::Replace($t, "Детекція\s+\d+\s+об.?’?єктів\s+моделлю\s+DETR\.?\s*", "", $rx)
+  $t = [regex]::Replace($t, "У\s+нижній\s+частині.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "Ліва\s+панель.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "Центральна\s+панель.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "Права\s+панель.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\s+лівій\s+панелі.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\s+центральній\s+панелі.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\s+правій\s+панелі.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "\b\d+\s+objects\s+detected\b\.?\s*", "", $rx)
+  $t = ($t -replace "\s{2,}", " ").Trim()
   return $t
 }
 
@@ -178,17 +178,17 @@ function Fix-BareCitationListsInString {
     [Parameter(Mandatory = $true)][ref]$Stats
   )
   $s = $Text
-  $pattern = "(?<!\\[)(?<list>\\b\\d+(?:\\s*;\\s*\\d+){2,})(?=\\s*[\\.,;:\\)\\]]|$)"
+  $pattern = "(?<!\[)(?<list>\b\d+(?:\s*;\s*\d+){2,})(?=\s*[\.,;:\)\]]|$)"
   while ($true) {
     $m = [regex]::Match($s, $pattern)
     if (-not $m.Success) { break }
     $list = $m.Groups["list"].Value
-    if ($list -match "\\.") {
+    if ($list -match "\.") {
       $Stats.Value.citation_lists_skipped_mixed++
       break
     }
     $nums = ($list -split ";") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
-    if (($nums | Where-Object { $_ -notmatch "^\\d+$" }).Count -gt 0) {
+    if (($nums | Where-Object { $_ -notmatch "^\d+$" }).Count -gt 0) {
       $Stats.Value.citation_lists_skipped_mixed++
       break
     }
@@ -202,10 +202,10 @@ function Fix-BareCitationListsInString {
 function Extract-UniqueCitations {
   param([Parameter(Mandatory = $true)][string]$Text)
   $cites = New-Object System.Collections.Generic.List[string]
-  foreach ($m in [regex]::Matches($Text, "\\[(?<inner>[^\\]]+)\\]")) {
+  foreach ($m in [regex]::Matches($Text, "\[(?<inner>[^\]]+)\]")) {
     $inner = $m.Groups["inner"].Value.Trim()
     if (-not $inner) { continue }
-    $inner = ($inner -replace "\\s*;\\s*", ", ") -replace "\\s{2,}", " "
+    $inner = ($inner -replace "\s*;\s*", ", ") -replace "\s{2,}", " "
     # keep as-is (may include pages "с. 21")
     if (-not ($cites.Contains($inner))) { $cites.Add($inner) | Out-Null }
   }
@@ -214,7 +214,7 @@ function Extract-UniqueCitations {
 
 function Pick-Sentences {
   param([Parameter(Mandatory = $true)][string]$Text)
-  $parts = [regex]::Split($Text, "(?<=[\\.!\\?])\\s+")
+  $parts = [regex]::Split($Text, "(?<=[\.\!\?])\s+")
   $out = New-Object System.Collections.Generic.List[string]
   foreach ($p in $parts) {
     $s = $p.Trim()
@@ -263,7 +263,7 @@ try {
     throw "Could not locate body headings 4.4.1-4.4.5 (skipping TOC)."
   }
 
-  $h45 = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($h445 + 1) -Pattern "^4\\.5(\\s|$)"
+  $h45 = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($h445 + 1) -Pattern "^4\.5(\s|$)"
   if ($h45 -lt 0) { throw "Could not find next heading 4.5 after 4.4.5." }
 
   $sections = @(
@@ -346,14 +346,14 @@ try {
           }
           # Stop if we hit another caption/heading.
           $tJ = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
-          if ($tJ -match "^4\\.4\\.[1-5]\\b" -or $tJ -match "^Рис\\.") { break }
+          if ($tJ -match "^4\.4\.[1-5]\b" -or $tJ -match "^Рис\.") { break }
         }
 
         # Avoid inserting duplicates if a summary already exists nearby.
         $already = $false
         for ($chk = [Math]::Max($startIdx + 1, $insertBeforeIdx - 5); $chk -lt $insertBeforeIdx; $chk++) {
           $tChk = Get-ParagraphText -Paragraph $paras[$chk] -Nsm $nsm
-          if ($tChk -match "^На\\s+рис\\.") { $already = $true; break }
+          if ($tChk -match "^На\s+рис\.") { $already = $true; break }
         }
         if ($already) { continue }
 
@@ -366,8 +366,8 @@ try {
           if (-not $pt) { continue }
           if (Paragraph-HasDrawing -Paragraph $paras[$p] -Nsm $nsm) { continue }
           if (Paragraph-HasBreak -Paragraph $paras[$p] -Nsm $nsm) { continue }
-          if ($pt -match "^4\\.4\\.[1-5]\\b") { continue }
-          if ($pt -match "^Рис\\.") { continue }
+          if ($pt -match "^4\.4\.[1-5]\b") { continue }
+          if ($pt -match "^Рис\.") { continue }
           if (Is-BoilerplateParagraphText -Text $pt) { continue }
 
           $pt2 = Normalize-BracketCitationsInText -Text @($pt)
@@ -383,7 +383,7 @@ try {
           [void]$pool.Append($pt2)
         }
 
-        $poolText = ($pool.ToString() -replace "\\s{2,}", " ").Trim()
+        $poolText = ($pool.ToString() -replace "\s{2,}", " ").Trim()
         $sentences = Pick-Sentences -Text $poolText
 
         # Ensure we have 3 content sentences (safe fillers if needed).
@@ -398,7 +398,7 @@ try {
         }
 
         $final = (($s1.TrimEnd(".") + ".") + " " + ($s2.TrimEnd(".") + ".") + " " + ($s3.TrimEnd(".") + ".") + " " + $s4).Trim()
-        $final = ($final -replace "\\s{2,}", " ").Trim()
+        $final = ($final -replace "\s{2,}", " ").Trim()
 
         $pSum = New-ParagraphWithStyleAndText -Xml $xml -Nsm $nsm -StyleVal $bodyStyle -Text $final
         [void]$body.InsertBefore($pSum, $paras[$insertBeforeIdx])
@@ -416,8 +416,8 @@ try {
     for ($i = $startIdx + 1; $i -le $endIdx; $i++) {
       $pt = Get-ParagraphText -Paragraph $paras[$i] -Nsm $nsm
       if (-not $pt) { continue }
-      if ($pt -match "^4\\.4\\.[1-5]\\b") { continue }
-      if ($pt -match "^Рис\\.") { continue }
+      if ($pt -match "^4\.4\.[1-5]\b") { continue }
+      if ($pt -match "^Рис\.") { continue }
       if (Paragraph-HasDrawing -Paragraph $paras[$i] -Nsm $nsm) { continue }
       if (Paragraph-HasBreak -Paragraph $paras[$i] -Nsm $nsm) { continue }
       if (Is-BoilerplateParagraphText -Text $pt) { $toDelete.Add($paras[$i]) | Out-Null }
@@ -439,7 +439,7 @@ try {
 
       $new = $old
       $new = Normalize-BracketCitationsInText -Text @($new)
-      if ($new -ne $old -and $old -match "\\[.*;.*\\]") { $stats.citation_semicolons_normalized++ }
+      if ($new -ne $old -and $old -match "\[.*;.*\]") { $stats.citation_semicolons_normalized++ }
       $new = Fix-BareCitationListsInString -Text $new -Stats ([ref]$stats)
       $new = Remove-RefTokensInText -Text @($new)
 
