@@ -347,10 +347,13 @@ try {
       if ($full -match "блок\s+детекції\s+моделі\s+DETR") { continue } # keep consolidated note
 
       $newFull = $full
-      $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,260}DETR[^\\.]{0,260}\\.?\s*", ""
-      $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,80}нижній частині[^\\.]{0,360}виявлено[^\\.]{0,200}\\.?\s*", ""
-      $newFull = $newFull -replace "У нижній частині[^\\.]{0,360}виявлено[^\\.]{0,200}\\.?\s*", ""
+      $newFull = $newFull -replace "Детекція об’єктів\.", ""
+      $newFull = $newFull -replace "Виявлено\s+\d+\s+об.?єктів\s+моделлю\s+DETR\.\s*", ""
       $newFull = $newFull -replace "«\s*\d+\s+об.?єктів\s+виявлено\s*»\s*", ""
+
+      $rxSingle = [System.Text.RegularExpressions.RegexOptions]::Singleline
+      $newFull = [System.Text.RegularExpressions.Regex]::Replace($newFull, "Детекц[іяі].*?DETR\.\s*", "", $rxSingle)
+      $newFull = [System.Text.RegularExpressions.Regex]::Replace($newFull, "Детекц[іяі].*?виявлено\.\s*", "", $rxSingle)
       $newFull = $newFull -replace "\s{2,}", " "
       $newFull = $newFull.Trim()
 
