@@ -25,6 +25,17 @@ function Paragraph-HasDrawing {
   return ($Paragraph.SelectSingleNode(".//w:drawing | .//w:pict | .//w:object", $Nsm) -ne $null)
 }
 
+function Paragraph-HasBreak {
+  param(
+    [Parameter(Mandatory = $true)][System.Xml.XmlNode]$Paragraph,
+    [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm
+  )
+  if ($Paragraph.SelectSingleNode(".//w:br[@w:type='page'] | .//w:lastRenderedPageBreak | .//w:pPr/w:sectPr", $Nsm)) {
+    return $true
+  }
+  return $false
+}
+
 function Paragraph-GetStyle {
   param(
     [Parameter(Mandatory = $true)][System.Xml.XmlNode]$Paragraph,
@@ -35,23 +46,13 @@ function Paragraph-GetStyle {
   return ""
 }
 
-function Paragraph-SetStyle {
+function Paragraph-RemoveNumbering {
   param(
     [Parameter(Mandatory = $true)][System.Xml.XmlNode]$Paragraph,
-    [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm,
-    [Parameter(Mandatory = $true)][string]$StyleVal
+    [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm
   )
-  $pPr = $Paragraph.SelectSingleNode("./w:pPr", $Nsm)
-  if (-not $pPr) {
-    $pPr = $Paragraph.OwnerDocument.CreateElement("w", "pPr", $Nsm.LookupNamespace("w"))
-    [void]$Paragraph.PrependChild($pPr)
-  }
-  $pStyle = $pPr.SelectSingleNode("./w:pStyle", $Nsm)
-  if (-not $pStyle) {
-    $pStyle = $Paragraph.OwnerDocument.CreateElement("w", "pStyle", $Nsm.LookupNamespace("w"))
-    [void]$pPr.PrependChild($pStyle)
-  }
-  $pStyle.SetAttribute("w:val", $Nsm.LookupNamespace("w"), $StyleVal)
+  $numPr = $Paragraph.SelectSingleNode("./w:pPr/w:numPr", $Nsm)
+  if ($numPr) { [void]$numPr.ParentNode.RemoveChild($numPr) }
 }
 
 function Rewrite-TextOnlyParagraph {
@@ -60,7 +61,6 @@ function Rewrite-TextOnlyParagraph {
     [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm,
     [Parameter(Mandatory = $true)][string]$Text
   )
-  # Keep pPr (style), replace all runs with a single clean run (inherits formatting from style).
   foreach ($r in @($Paragraph.SelectNodes("./w:r", $Nsm))) {
     [void]$Paragraph.RemoveChild($r)
   }
@@ -72,438 +72,378 @@ function Rewrite-TextOnlyParagraph {
   [void]$Paragraph.AppendChild($rNew)
 }
 
-function Insert-ParagraphAfterIndex {
+function New-ParagraphWithStyleAndText {
   param(
     [Parameter(Mandatory = $true)][System.Xml.XmlDocument]$Xml,
     [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm,
-    [Parameter(Mandatory = $true)][System.Xml.XmlNodeList]$Paras,
-    [Parameter(Mandatory = $true)][int]$AfterIndex,
     [Parameter(Mandatory = $true)][string]$StyleVal,
     [Parameter(Mandatory = $true)][string]$Text
   )
   $pNew = $Xml.CreateElement("w", "p", $Nsm.LookupNamespace("w"))
   $pPr = $Xml.CreateElement("w", "pPr", $Nsm.LookupNamespace("w"))
-  $pStyle = $Xml.CreateElement("w", "pStyle", $Nsm.LookupNamespace("w"))
-  $pStyle.SetAttribute("w:val", $Nsm.LookupNamespace("w"), $StyleVal)
-  [void]$pPr.AppendChild($pStyle)
+  if ($StyleVal) {
+    $pStyle = $Xml.CreateElement("w", "pStyle", $Nsm.LookupNamespace("w"))
+    $pStyle.SetAttribute("w:val", $Nsm.LookupNamespace("w"), $StyleVal)
+    [void]$pPr.AppendChild($pStyle)
+  }
   [void]$pNew.AppendChild($pPr)
   Rewrite-TextOnlyParagraph -Paragraph $pNew -Nsm $Nsm -Text $Text
-  [void]$Paras[$AfterIndex].ParentNode.InsertAfter($pNew, $Paras[$AfterIndex])
+  return $pNew
 }
 
-function Normalize-BracketCitationsInParagraphRuns {
+function Find-BodyHeadingIndex {
   param(
-    [Parameter(Mandatory = $true)][System.Xml.XmlNode]$Paragraph,
-    [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm
+    [Parameter(Mandatory = $true)][System.Xml.XmlNode[]]$Paras,
+    [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm,
+    [Parameter(Mandatory = $true)][string]$Needle
   )
-  $tNodes = @($Paragraph.SelectNodes(".//w:t", $Nsm))
-  if ($tNodes.Count -eq 0) { return 0 }
-  $inBracket = $false
-  $replaced = 0
-  foreach ($t in $tNodes) {
-    $s = $t.InnerText
-    if (-not $s) { continue }
-    if ($s.IndexOf("[") -lt 0 -and $s.IndexOf("]") -lt 0 -and $s.IndexOf(";") -lt 0) { continue }
-    $chars = $s.ToCharArray()
-    for ($i = 0; $i -lt $chars.Length; $i++) {
-      if ($chars[$i] -eq "[") { $inBracket = $true; continue }
-      if ($chars[$i] -eq "]") { $inBracket = $false; continue }
-      if ($inBracket -and $chars[$i] -eq ";") { $chars[$i] = ","; $replaced++ }
+  for ($i = 0; $i -lt $Paras.Count; $i++) {
+    $t = Get-ParagraphText -Paragraph $Paras[$i] -Nsm $Nsm
+    if ($t.StartsWith($Needle)) {
+      $max = [Math]::Min($Paras.Count - 1, $i + 200)
+      for ($j = $i; $j -le $max; $j++) {
+        if (Paragraph-HasDrawing -Paragraph $Paras[$j] -Nsm $Nsm) { return $i }
+      }
     }
-    $newS = -join $chars
-    if ($newS -ne $s) { $t.InnerText = $newS }
   }
-  return $replaced
+  return -1
 }
 
-function Wrap-BareNumericListsInTextNode {
+function Find-NextHeadingIndexByRegex {
   param(
-    [Parameter(Mandatory = $true)][System.Xml.XmlNode]$TextNode,
-    [Parameter(Mandatory = $true)][ref]$SkippedOut
+    [Parameter(Mandatory = $true)][System.Xml.XmlNode[]]$Paras,
+    [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm,
+    [Parameter(Mandatory = $true)][int]$StartIndex,
+    [Parameter(Mandatory = $true)][string]$Pattern
   )
-  $s = $TextNode.InnerText
-  if (-not $s) { return 0 }
-  if ($s -notmatch "\d{1,3}\s*;\s*\d{1,3}") { return 0 }
-  $script:__wrapCount = 0
-  $pattern = '(\b\d{1,3}(?:\s*;\s*\d{1,3}){1,})(?=\s*[\)\].,;:]|\s*$)'
-  $new = [System.Text.RegularExpressions.Regex]::Replace($s, $pattern, {
-    param($m)
-    $list = $m.Groups[1].Value
-    if ($list -match '[\\.-]') {
-      $SkippedOut.Value += $list
-      return $list
-    }
-    $items = ($list -split ';' | ForEach-Object { $_.Trim() }) -join ', '
-    $script:__wrapCount++
-    return '[' + $items + ']'
-  })
-  if ($new -ne $s) { $TextNode.InnerText = $new }
-  return $script:__wrapCount
+  for ($i = $StartIndex; $i -lt $Paras.Count; $i++) {
+    $t = Get-ParagraphText -Paragraph $Paras[$i] -Nsm $Nsm
+    if ($t -match $Pattern) { return $i }
+  }
+  return -1
 }
 
-function Split-Sentences {
+function Try-ParseFigureCaption {
   param([Parameter(Mandatory = $true)][string]$Text)
-  $t = ($Text -replace "\s{2,}", " ").Trim()
-  if (-not $t) { return @() }
-  $parts = [System.Text.RegularExpressions.Regex]::Split($t, "(?<=[\\.!?])\\s+")
-  return @($parts | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  # Example: "Рис. 4.62 — Farneback_..."
+  $m = [regex]::Match($Text, "^Рис\\.\\s*4\\.(\\d+)\\s*[\\u2014\\u2013-]\\s*(.+)$")
+  if (-not $m.Success) { return $null }
+  $figNo = [int]$m.Groups[1].Value
+  $tail = $m.Groups[2].Value.Trim()
+  $prefix = $tail
+  $us = $tail.IndexOf("_")
+  if ($us -gt 0) { $prefix = $tail.Substring(0, $us) }
+  else {
+    $sp = $tail.IndexOf(" ")
+    if ($sp -gt 0) { $prefix = $tail.Substring(0, $sp) }
+  }
+  $prefix = $prefix.Trim()
+  if (-not $prefix) { $prefix = "Method" }
+  return [pscustomobject]@{ fig = $figNo; prefix = $prefix; tail = $tail }
+}
+
+function Is-BoilerplateParagraphText {
+  param([Parameter(Mandatory = $true)][string]$Text)
+  $s = $Text.Trim().ToLowerInvariant()
+  if (-not $s) { return $false }
+  if ($s.StartsWith("ліва панель") -or $s.StartsWith("центральна панель") -or $s.StartsWith("права панель")) { return $true }
+  if ($s.StartsWith("на лівій панелі") -or $s.StartsWith("на центральній панелі") -or $s.StartsWith("на правій панелі")) { return $true }
+  if ($s.StartsWith("детекція") -or $s.StartsWith("виявлено") -or $s.StartsWith("у нижній частині")) { return $true }
+  if ($s -match "\\bobjects\\s+detected\\b") { return $true }
+  return $false
 }
 
 function Clean-BoilerplateFromText {
   param([Parameter(Mandatory = $true)][string]$Text)
-  $rx = [System.Text.RegularExpressions.RegexOptions]::Singleline -bor [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+  $rx = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
   $t = $Text
-  # Panel/detection phrases.
-  $t = [regex]::Replace($t, "Ð”ÐµÑ‚ÐµÐºÑ†Ñ–Ñ\\s+Ð¾Ð±â€™Ñ”ÐºÑ‚Ñ–Ð²\\.?\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Ð’Ð¸ÑÐ²Ð»ÐµÐ½Ð¾\\s+\\d+\\s+Ð¾Ð±.?Ñ”ÐºÑ‚Ñ–Ð²\\s+Ð¼Ð¾Ð´ÐµÐ»Ð»ÑŽ\\s+DETR\\.?\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Ð£\\s+Ð½Ð¸Ð¶Ð½Ñ–Ð¹\\s+Ñ‡Ð°ÑÑ‚Ð¸Ð½Ñ–.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Ð›Ñ–Ð²Ð°\\s+Ð¿Ð°Ð½ÐµÐ»ÑŒ.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Ð¦ÐµÐ½Ñ‚Ñ€Ð°Ð»ÑŒÐ½Ð°\\s+Ð¿Ð°Ð½ÐµÐ»ÑŒ.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "ÐŸÑ€Ð°Ð²Ð°\\s+Ð¿Ð°Ð½ÐµÐ»ÑŒ.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "ÐÐ°\\s+Ð»Ñ–Ð²Ñ–Ð¹\\s+Ð¿Ð°Ð½ÐµÐ»Ñ–.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "ÐÐ°\\s+Ñ†ÐµÐ½Ñ‚Ñ€Ð°Ð»ÑŒÐ½Ñ–Ð¹\\s+Ð¿Ð°Ð½ÐµÐ»Ñ–.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "ÐÐ°\\s+Ð¿Ñ€Ð°Ð²Ñ–Ð¹\\s+Ð¿Ð°Ð½ÐµÐ»Ñ–.*?\\.\\s*", "", $rx)
-  # Tidy.
-  $t = ($t -replace "\s{2,}", " ").Trim()
+  $t = [regex]::Replace($t, "Детекція\\s+об’єктів\\.?\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Виявлено\\s+\\d+\\s+об.?’?єктів\\s+моделлю\\s+DETR\\.?\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Детекція\\s+\\d+\\s+об.?’?єктів\\s+моделлю\\s+DETR\\.?\\s*", "", $rx)
+  $t = [regex]::Replace($t, "У\\s+нижній\\s+частині.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Ліва\\s+панель.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Центральна\\s+панель.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Права\\s+панель.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\\s+лівій\\s+панелі.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\\s+центральній\\s+панелі.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\\s+правій\\s+панелі.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "\\b\\d+\\s+objects\\s+detected\\b\\.?\\s*", "", $rx)
+  $t = ($t -replace "\\s{2,}", " ").Trim()
   return $t
 }
 
-function Extract-AndStripCitations {
-  param([Parameter(Mandatory = $true)][string]$Sentence, [Parameter(Mandatory = $true)][ref]$Cites)
-  $s = $Sentence
-  foreach ($m in [System.Text.RegularExpressions.Regex]::Matches($s, "\\[[^\\]]+\\]")) {
-    $Cites.Value += $m.Value
+function Fix-BareCitationListsInString {
+  param(
+    [Parameter(Mandatory = $true)][string]$Text,
+    [Parameter(Mandatory = $true)][ref]$Stats
+  )
+  $s = $Text
+  $pattern = "(?<!\\[)(?<list>\\b\\d+(?:\\s*;\\s*\\d+){2,})(?=\\s*[\\.,;:\\)\\]]|$)"
+  while ($true) {
+    $m = [regex]::Match($s, $pattern)
+    if (-not $m.Success) { break }
+    $list = $m.Groups["list"].Value
+    if ($list -match "\\.") {
+      $Stats.Value.citation_lists_skipped_mixed++
+      break
+    }
+    $nums = ($list -split ";") | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
+    if (($nums | Where-Object { $_ -notmatch "^\\d+$" }).Count -gt 0) {
+      $Stats.Value.citation_lists_skipped_mixed++
+      break
+    }
+    $repl = "[" + (($nums | ForEach-Object { [int]$_ }) -join ", ") + "]"
+    $s = $s.Substring(0, $m.Index) + $repl + $s.Substring($m.Index + $m.Length)
+    $Stats.Value.citation_lists_wrapped++
   }
-  $s = [regex]::Replace($s, "\\s*\\[[^\\]]+\\]\\s*", " ")
-  $s = ($s -replace "\s{2,}", " ").Trim()
   return $s
 }
 
-function Merge-CitationBlocks {
-  param([Parameter(Mandatory = $true)][string[]]$Blocks)
-  if ($Blocks.Count -eq 0) { return "" }
-  $items = New-Object 'System.Collections.Generic.List[string]'
-  foreach ($b in $Blocks) {
-    $inner = $b.Trim()
-    if ($inner.StartsWith("[")) { $inner = $inner.Substring(1) }
-    if ($inner.EndsWith("]")) { $inner = $inner.Substring(0, $inner.Length - 1) }
-    foreach ($it in ($inner -split ",")) {
-      $x = $it.Trim()
-      if (-not $x) { continue }
-      if (-not $items.Contains($x)) { [void]$items.Add($x) }
-    }
+function Extract-UniqueCitations {
+  param([Parameter(Mandatory = $true)][string]$Text)
+  $cites = New-Object System.Collections.Generic.List[string]
+  foreach ($m in [regex]::Matches($Text, "\\[(?<inner>[^\\]]+)\\]")) {
+    $inner = $m.Groups["inner"].Value.Trim()
+    if (-not $inner) { continue }
+    $inner = ($inner -replace "\\s*;\\s*", ", ") -replace "\\s{2,}", " "
+    # keep as-is (may include pages "с. 21")
+    if (-not ($cites.Contains($inner))) { $cites.Add($inner) | Out-Null }
   }
-  if ($items.Count -eq 0) { return "" }
-  return "[" + (($items.ToArray()) -join ", ") + "]"
+  return $cites
 }
 
-function Find-BodyHeadingIndexByPrefix {
-  param(
-    [Parameter(Mandatory = $true)][System.Xml.XmlNodeList]$Paras,
-    [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm,
-    [Parameter(Mandatory = $true)][string]$Prefix,
-    [Parameter(Mandatory = $false)][int]$StartAt = 0,
-    [Parameter(Mandatory = $false)][int]$Lookahead = 200
-  )
-  $cands = New-Object 'System.Collections.Generic.List[int]'
-  for ($j = $StartAt; $j -lt $Paras.Count; $j++) {
-    $txt = Get-ParagraphText -Paragraph $Paras[$j] -Nsm $Nsm
-    if ($txt -and $txt.StartsWith($Prefix)) { [void]$cands.Add($j) }
+function Pick-Sentences {
+  param([Parameter(Mandatory = $true)][string]$Text)
+  $parts = [regex]::Split($Text, "(?<=[\\.!\\?])\\s+")
+  $out = New-Object System.Collections.Generic.List[string]
+  foreach ($p in $parts) {
+    $s = $p.Trim()
+    if (-not $s) { continue }
+    if (Is-BoilerplateParagraphText -Text $s) { continue }
+    $s = Clean-BoilerplateFromText -Text $s
+    if (-not $s) { continue }
+    if (-not ($s.EndsWith(".")) -and -not ($s.EndsWith("!")) -and -not ($s.EndsWith("?"))) { $s += "." }
+    if (-not ($out.Contains($s))) { $out.Add($s) | Out-Null }
+    if ($out.Count -ge 8) { break }
   }
-  if ($cands.Count -eq 0) { return $null }
-  if ($cands.Count -eq 1) { return $cands[0] }
-  foreach ($c in $cands) {
-    $limit = [Math]::Min($Paras.Count, $c + $Lookahead)
-    for ($k = $c + 1; $k -lt $limit; $k++) {
-      $t = Get-ParagraphText -Paragraph $Paras[$k] -Nsm $Nsm
-      if (-not $t) { continue }
-      if ($t.StartsWith("4.5")) { break }
-      if ($t -match "^(Ð Ð¸Ñ\\.|Ð Ð¸ÑÑƒÐ½Ð¾Ðº)\\s") { return $c }
-    }
-  }
-  return $cands[$cands.Count - 1]
+  return $out
 }
-
-function Get-FigureInfoFromCaption {
-  param([Parameter(Mandatory = $true)][string]$CaptionText)
-  $m = [regex]::Match($CaptionText, "^Ð Ð¸Ñ\\.\\s*4\\.(\\d+)\\s*â€”\\s*(.+)$")
-  if (-not $m.Success) { return $null }
-  $figNo = [int]$m.Groups[1].Value
-  $label = $m.Groups[2].Value.Trim()
-  $prefix = $label
-  $u = $label.IndexOf("_")
-  if ($u -gt 0) { $prefix = $label.Substring(0, $u) }
-  else {
-    $sp = $label.IndexOf(" ")
-    if ($sp -gt 0) { $prefix = $label.Substring(0, $sp) }
-  }
-  return [pscustomobject]@{ fig = $figNo; label = $label; prefix = $prefix }
-}
-
-function Remove-ParagraphAt {
-  param([Parameter(Mandatory = $true)][System.Xml.XmlNodeList]$Paras, [Parameter(Mandatory = $true)][int]$Index)
-  [void]$Paras[$Index].ParentNode.RemoveChild($Paras[$Index])
-}
-
-$workRoot = Join-Path (Split-Path -Parent $OutputDocx) "tmp\\work"
-$workDir = Join-Path $workRoot ("docx_" + [Guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $workDir -Force | Out-Null
 
 $stats = [ordered]@{
-  input = (Resolve-Path -LiteralPath $InputDocx).Path
-  output = (Resolve-Path -LiteralPath (Split-Path -Parent $OutputDocx)).Path + "\\" + (Split-Path -Leaf $OutputDocx)
-  bracket_semicolons_replaced = 0
-  bare_lists_wrapped = 0
-  bare_lists_skipped = @()
-  legends_inserted = 0
-  legends_removed = 0
-  panel_paras_deleted = 0
-  detection_paras_deleted = 0
-  rewritten_blocks = 0
-  rewritten_paras = 0
-  deleted_text_paras = 0
-  style_body_used = @()
-  style_caption_used = @()
+  input = $InputDocx
+  output = $OutputDocx
+  inserted_legends = 0
+  inserted_summaries = 0
+  deleted_boilerplate_paras = 0
+  citation_semicolons_normalized = 0
+  citation_lists_wrapped = 0
+  citation_lists_skipped_mixed = 0
+  sections_processed = @()
 }
 
+$workDir = Join-Path $env:TEMP ("docx_work_" + [guid]::NewGuid().ToString("N"))
 try {
-  # Copy input -> output (never edit input in place).
-  Copy-Item -LiteralPath $InputDocx -Destination $OutputDocx -Force
-
-  Expand-Docx -DocxPath $OutputDocx -DestinationDir $workDir
+  Expand-Docx -DocxPath $InputDocx -DestinationDir $workDir
   $docXmlPath = Join-Path $workDir "word\\document.xml"
+  if (-not (Test-Path -LiteralPath $docXmlPath)) { throw "Missing word/document.xml in DOCX." }
+
   $xml = Load-XmlDocument -Path $docXmlPath
   $nsm = New-WordNamespaceManager -Xml $xml
+  $body = $xml.SelectSingleNode("/w:document/w:body", $nsm)
+  if (-not $body) { throw "Missing w:body." }
 
-  $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
+  $paras = @($body.SelectNodes("./w:p", $nsm))
 
-  # Whole-document citation safety: bracket ";" -> "," across runs, plus safe bare-list wrapping only inside single w:t nodes.
-  foreach ($p in $paras) {
-    $stats.bracket_semicolons_replaced += (Normalize-BracketCitationsInParagraphRuns -Paragraph $p -Nsm $nsm)
-    $sk = @()
-    foreach ($t in @($p.SelectNodes(".//w:t", $nsm))) {
-      $stats.bare_lists_wrapped += (Wrap-BareNumericListsInTextNode -TextNode $t -SkippedOut ([ref]$sk))
-    }
-    foreach ($x in $sk) { if ($stats.bare_lists_skipped.Count -lt 50) { $stats.bare_lists_skipped += $x } }
+  $h441 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.1"
+  $h442 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.2"
+  $h443 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.3"
+  $h444 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.4"
+  $h445 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.5"
+  if ($h441 -lt 0 -or $h442 -lt 0 -or $h443 -lt 0 -or $h444 -lt 0 -or $h445 -lt 0) {
+    throw "Could not locate body headings 4.4.1-4.4.5 (skipping TOC)."
   }
 
-  function Refresh-Paragraphs { $script:paras = $xml.SelectNodes("//w:body/w:p", $nsm) }
+  $h45 = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($h445 + 1) -Pattern "^4\\.5(\\s|$)"
+  if ($h45 -lt 0) { throw "Could not find next heading 4.5 after 4.4.5." }
 
-  $h441 = Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix "4.4.1" -StartAt 0
-  if ($null -eq $h441) { throw "Could not find 4.4.1 in body." }
-  $h45 = Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix "4.5" -StartAt $h441
-  if ($null -eq $h45) { throw "Could not find 4.5 in body." }
+  $sections = @(
+    @{ name = "4.4.1"; start = $h441; end = $h442 - 1 },
+    @{ name = "4.4.2"; start = $h442; end = $h443 - 1 },
+    @{ name = "4.4.3"; start = $h443; end = $h444 - 1 },
+    @{ name = "4.4.4"; start = $h444; end = $h445 - 1 },
+    @{ name = "4.4.5"; start = $h445; end = $h45 - 1 }
+  )
 
-  # Find all subsection headings in 4.4.*
-  $subHeads = @()
-  foreach ($pref in @("4.4.1", "4.4.2", "4.4.3", "4.4.4", "4.4.5")) {
-    $ix = Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix $pref -StartAt $h441
-    if ($null -ne $ix) { $subHeads += [pscustomobject]@{ pref = $pref; idx = $ix } }
-  }
-  $subHeads = $subHeads | Sort-Object idx
+  foreach ($sec in $sections) {
+    # Refresh paragraph list each section, because we insert/delete.
+    $paras = @($body.SelectNodes("./w:p", $nsm))
 
-  # Capture caption/body styles for reporting.
-  for ($i = $h441; $i -lt $h45; $i++) {
-    $t = Get-ParagraphText -Paragraph $paras[$i] -Nsm $nsm
-    if (-not $t) { continue }
-    if ($t -match "^Ð Ð¸Ñ\\.") {
-      $s = Paragraph-GetStyle -Paragraph $paras[$i] -Nsm $nsm
-      if ($s -and -not ($stats.style_caption_used -contains $s)) { $stats.style_caption_used += $s }
-    } elseif ($t -match "^(4\\.4\\.)") {
-      continue
-    } else {
-      $s = Paragraph-GetStyle -Paragraph $paras[$i] -Nsm $nsm
-      if ($s -and -not ($stats.style_body_used -contains $s)) { $stats.style_body_used += $s }
-    }
-  }
+    $startIdx = [int]$sec.start
+    $endIdx = [int]$sec.end
+    $secName = [string]$sec.name
 
-  for ($si = 0; $si -lt $subHeads.Count; $si++) {
-    Refresh-Paragraphs
-    $startIdx = ($subHeads[$si].idx)
-    $endIdx = if ($si + 1 -lt $subHeads.Count) { ($subHeads[$si + 1].idx) } else { $h45 }
+    if ($endIdx -le $startIdx -or $startIdx -lt 0 -or $endIdx -ge $paras.Count) { continue }
 
-    # Determine body style for inserted legend (first normal paragraph style after heading).
+    # Pick a body style for inserted paragraphs from the first non-empty paragraph after heading.
     $bodyStyle = ""
-    for ($j = $startIdx + 1; $j -lt $endIdx; $j++) {
-      $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
+    for ($k = $startIdx + 1; $k -le [Math]::Min($endIdx, $startIdx + 30); $k++) {
+      $txtK = Get-ParagraphText -Paragraph $paras[$k] -Nsm $nsm
+      if (-not $txtK) { continue }
+      if (Paragraph-HasDrawing -Paragraph $paras[$k] -Nsm $nsm) { continue }
+      if (Paragraph-HasBreak -Paragraph $paras[$k] -Nsm $nsm) { continue }
+      $bodyStyle = Paragraph-GetStyle -Paragraph $paras[$k] -Nsm $nsm
+      break
+    }
+
+    # Insert legend (once per subsection) if not already present right after heading.
+    $nextTxt = Get-ParagraphText -Paragraph $paras[$startIdx + 1] -Nsm $nsm
+    if (-not $nextTxt.StartsWith("Інтерпретація панелей:")) {
+      $legendText = "Інтерпретація панелей: ліва — оптичний потік; центральна — карта глибини; права — об’єднане зображення. Службові фрази про детекцію (кількість виявлених об’єктів) не повторюються для кожного рисунка."
+      $pLegend = New-ParagraphWithStyleAndText -Xml $xml -Nsm $nsm -StyleVal $bodyStyle -Text $legendText
+      [void]$body.InsertAfter($pLegend, $paras[$startIdx])
+      $stats.inserted_legends++
+      $paras = @($body.SelectNodes("./w:p", $nsm))
+      $endIdx++
+    }
+
+    # Recompute because we may have inserted.
+    $paras = @($body.SelectNodes("./w:p", $nsm))
+
+    # Find figure captions in this subsection.
+    $captions = New-Object System.Collections.Generic.List[object]
+    for ($i = $startIdx + 1; $i -le $endIdx; $i++) {
+      $t = Get-ParagraphText -Paragraph $paras[$i] -Nsm $nsm
+      if (-not $t) { continue }
+      $info = Try-ParseFigureCaption -Text $t
+      if ($info -ne $null) {
+        $captions.Add([pscustomobject]@{ idx = $i; fig = $info.fig; prefix = $info.prefix; text = $t }) | Out-Null
+      }
+    }
+
+    if ($captions.Count -gt 0) {
+      # Group consecutive captions by prefix.
+      $blocks = New-Object System.Collections.Generic.List[object]
+      $cur = $null
+      foreach ($c in $captions) {
+        if ($cur -eq $null -or $cur.prefix -ne $c.prefix) {
+          if ($cur -ne $null) { $blocks.Add($cur) | Out-Null }
+          $cur = [pscustomobject]@{ prefix = $c.prefix; captions = New-Object System.Collections.Generic.List[object] }
+        }
+        $cur.captions.Add($c) | Out-Null
+      }
+      if ($cur -ne $null) { $blocks.Add($cur) | Out-Null }
+
+      foreach ($b in $blocks) {
+        $firstCap = $b.captions[0]
+        $lastCap = $b.captions[$b.captions.Count - 1]
+
+        # Insert summary paragraph BEFORE the first drawing that belongs to the first caption (so it's above the figure).
+        $insertBeforeIdx = $firstCap.idx
+        for ($j = $firstCap.idx; $j -ge ($startIdx + 1); $j--) {
+          if (Paragraph-HasDrawing -Paragraph $paras[$j] -Nsm $nsm) {
+            $insertBeforeIdx = $j
+            break
+          }
+          # Stop if we hit another caption/heading.
+          $tJ = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
+          if ($tJ -match "^4\\.4\\.[1-5]\\b" -or $tJ -match "^Рис\\.") { break }
+        }
+
+        # Avoid inserting duplicates if a summary already exists nearby.
+        $already = $false
+        for ($chk = [Math]::Max($startIdx + 1, $insertBeforeIdx - 5); $chk -lt $insertBeforeIdx; $chk++) {
+          $tChk = Get-ParagraphText -Paragraph $paras[$chk] -Nsm $nsm
+          if ($tChk -match "^На\\s+рис\\.") { $already = $true; break }
+        }
+        if ($already) { continue }
+
+        # Build a pool of nearby text (do not modify existing paragraphs; only use their sentences).
+        $pool = New-Object System.Text.StringBuilder
+        $poolCites = New-Object System.Collections.Generic.List[string]
+        $winStart = [Math]::Max($startIdx + 1, $insertBeforeIdx - 35)
+        for ($p = $winStart; $p -lt $insertBeforeIdx; $p++) {
+          $pt = Get-ParagraphText -Paragraph $paras[$p] -Nsm $nsm
+          if (-not $pt) { continue }
+          if (Paragraph-HasDrawing -Paragraph $paras[$p] -Nsm $nsm) { continue }
+          if (Paragraph-HasBreak -Paragraph $paras[$p] -Nsm $nsm) { continue }
+          if ($pt -match "^4\\.4\\.[1-5]\\b") { continue }
+          if ($pt -match "^Рис\\.") { continue }
+          if (Is-BoilerplateParagraphText -Text $pt) { continue }
+
+          $pt2 = Normalize-BracketCitationsInText -Text @($pt)
+          $pt2 = Remove-RefTokensInText -Text @($pt2)
+          $pt2 = Fix-BareCitationListsInString -Text $pt2 -Stats ([ref]$stats)
+
+          $cites = Extract-UniqueCitations -Text $pt2
+          foreach ($ci in $cites) {
+            if (-not ($poolCites.Contains($ci))) { $poolCites.Add($ci) | Out-Null }
+          }
+
+          [void]$pool.Append(" ")
+          [void]$pool.Append($pt2)
+        }
+
+        $poolText = ($pool.ToString() -replace "\\s{2,}", " ").Trim()
+        $sentences = Pick-Sentences -Text $poolText
+
+        # Ensure we have 3 content sentences (safe fillers if needed).
+        $s1 = if ($sentences.Count -ge 1) { $sentences[0] } else { "У підрозділі наведено узагальнений опис експериментальних результатів." }
+        $s2 = if ($sentences.Count -ge 2) { $sentences[1] } else { "Пояснення панелей подано один раз на початку підрозділу без повторення службових фрагментів." }
+        $s3 = if ($sentences.Count -ge 3) { $sentences[2] } else { "Результати використано для стислого порівняння комбінацій моделей у межах розділу." }
+
+        $range = if ($firstCap.fig -eq $lastCap.fig) { "4.$($firstCap.fig)" } else { "4.$($firstCap.fig)–4.$($lastCap.fig)" }
+        $s4 = "На рис. $range наведено результати для $($b.prefix)."
+        if ($poolCites.Count -gt 0) {
+          $s4 = $s4.TrimEnd(".") + " [" + ($poolCites -join ", ") + "]."
+        }
+
+        $final = (($s1.TrimEnd(".") + ".") + " " + ($s2.TrimEnd(".") + ".") + " " + ($s3.TrimEnd(".") + ".") + " " + $s4).Trim()
+        $final = ($final -replace "\\s{2,}", " ").Trim()
+
+        $pSum = New-ParagraphWithStyleAndText -Xml $xml -Nsm $nsm -StyleVal $bodyStyle -Text $final
+        [void]$body.InsertBefore($pSum, $paras[$insertBeforeIdx])
+        $stats.inserted_summaries++
+
+        # Refresh after insertion (indices shift).
+        $paras = @($body.SelectNodes("./w:p", $nsm))
+        $endIdx++
+      }
+    }
+
+    # Delete boilerplate paragraphs in the subsection (style-safe).
+    $paras = @($body.SelectNodes("./w:p", $nsm))
+    $toDelete = New-Object System.Collections.Generic.List[System.Xml.XmlNode]
+    for ($i = $startIdx + 1; $i -le $endIdx; $i++) {
+      $pt = Get-ParagraphText -Paragraph $paras[$i] -Nsm $nsm
       if (-not $pt) { continue }
-      if ($pt -match "^(Ð Ð¸Ñ\\.|Ð Ð¸ÑÑƒÐ½Ð¾Ðº)") { continue }
-      if ($pt -match "^4\\.4\\.") { continue }
-      $bodyStyle = Paragraph-GetStyle -Paragraph $paras[$j] -Nsm $nsm
-      if ($bodyStyle) { break }
+      if ($pt -match "^4\\.4\\.[1-5]\\b") { continue }
+      if ($pt -match "^Рис\\.") { continue }
+      if (Paragraph-HasDrawing -Paragraph $paras[$i] -Nsm $nsm) { continue }
+      if (Paragraph-HasBreak -Paragraph $paras[$i] -Nsm $nsm) { continue }
+      if (Is-BoilerplateParagraphText -Text $pt) { $toDelete.Add($paras[$i]) | Out-Null }
     }
-    if (-not $bodyStyle) { $bodyStyle = "a2" }
-
-    # Remove any existing legend-like paragraph just under the heading.
-    $windowEnd = [Math]::Min($paras.Count, $startIdx + 10)
-    for ($j = $windowEnd - 1; $j -ge ($startIdx + 1); $j--) {
-      $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
-      if (-not $pt) { continue }
-      if ($pt.StartsWith("Ð†Ð½Ñ‚ÐµÑ€Ð¿Ñ€ÐµÑ‚Ð°Ñ†Ñ–Ñ Ð¿Ð°Ð½ÐµÐ»ÐµÐ¹") -or $pt.StartsWith("Ð£ Ð²ÑÑ–Ñ… Ð½Ð°Ð²ÐµÐ´ÐµÐ½Ð¸Ñ… Ð´Ð°Ð»Ñ– Ñ–Ð»ÑŽÑÑ‚Ñ€Ð°Ñ†Ñ–ÑÑ… Ñ€Ð¾Ð·Ð´Ñ–Ð»Ñƒ 4.4")) {
-        Remove-ParagraphAt -Paras $paras -Index $j
-        $stats.legends_removed++
-      }
+    foreach ($node in $toDelete) {
+      [void]$node.ParentNode.RemoveChild($node)
+      $stats.deleted_boilerplate_paras++
     }
-    Refresh-Paragraphs
-    # Recompute indices after deletion.
-    $startIdx = Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix $subHeads[$si].pref -StartAt $h441
-    $endIdx = if ($si + 1 -lt $subHeads.Count) { Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix $subHeads[$si + 1].pref -StartAt $startIdx } else { Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix "4.5" -StartAt $startIdx }
-    if ($null -eq $endIdx) { $endIdx = $paras.Count }
 
-    $legendText = "Ð†Ð½Ñ‚ÐµÑ€Ð¿Ñ€ÐµÑ‚Ð°Ñ†Ñ–Ñ Ð¿Ð°Ð½ÐµÐ»ÐµÐ¹: Ð»Ñ–Ð²Ð° â€” Ð¾Ð¿Ñ‚Ð¸Ñ‡Ð½Ð¸Ð¹ Ð¿Ð¾Ñ‚Ñ–Ðº; Ñ†ÐµÐ½Ñ‚Ñ€Ð°Ð»ÑŒÐ½Ð° â€” ÐºÐ°Ñ€Ñ‚Ð° Ð³Ð»Ð¸Ð±Ð¸Ð½Ð¸; Ð¿Ñ€Ð°Ð²Ð° â€” Ð¾Ð±â€™Ñ”Ð´Ð½Ð°Ð½Ðµ Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð½Ñ. Ð¡Ð»ÑƒÐ¶Ð±Ð¾Ð²Ñ– Ñ„Ñ€Ð°Ð·Ð¸ Ð¿Ñ€Ð¾ Ð´ÐµÑ‚ÐµÐºÑ†Ñ–ÑŽ (ÐºÑ–Ð»ÑŒÐºÑ–ÑÑ‚ÑŒ Ð²Ð¸ÑÐ²Ð»ÐµÐ½Ð¸Ñ… Ð¾Ð±â€™Ñ”ÐºÑ‚Ñ–Ð²) Ð½Ðµ Ð´ÑƒÐ±Ð»ÑŽÑŽÑ‚ÑŒÑÑ Ð² ÐºÐ¾Ð¶Ð½Ð¾Ð¼Ñƒ Ð¾Ð¿Ð¸ÑÑ–."
-    Insert-ParagraphAfterIndex -Xml $xml -Nsm $nsm -Paras $paras -AfterIndex $startIdx -StyleVal $bodyStyle -Text $legendText
-    $stats.legends_inserted++
+    $stats.sections_processed += $secName
+  }
 
-    Refresh-Paragraphs
-    # Refresh subsection bounds again after insertion.
-    $startIdx = Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix $subHeads[$si].pref -StartAt $h441
-    $endIdx = if ($si + 1 -lt $subHeads.Count) { Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix $subHeads[$si + 1].pref -StartAt $startIdx } else { Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix "4.5" -StartAt $startIdx }
-    if ($null -eq $endIdx) { $endIdx = $paras.Count }
+  # Repo-wide citation safety pass (style-preserving): normalize ';' inside brackets + wrap bare lists when safe.
+  $paras = @($body.SelectNodes("./w:p", $nsm))
+  foreach ($p in $paras) {
+    foreach ($tNode in @($p.SelectNodes(".//w:t", $nsm))) {
+      $old = $tNode.InnerText
+      if (-not $old) { continue }
 
-    # Gather caption indices within subsection.
-    $capIdx = New-Object 'System.Collections.Generic.List[int]'
-    $capInfo = @{}
-    for ($j = $startIdx + 1; $j -lt $endIdx; $j++) {
-      $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
-      if ($pt -match "^Ð Ð¸Ñ\\.\\s*4\\.(\\d+)") {
-        [void]$capIdx.Add($j)
-        $capInfo[$j] = Get-FigureInfoFromCaption -CaptionText $pt
-      }
-    }
-    if ($capIdx.Count -eq 0) { continue }
+      $new = $old
+      $new = Normalize-BracketCitationsInText -Text @($new)
+      if ($new -ne $old -and $old -match "\\[.*;.*\\]") { $stats.citation_semicolons_normalized++ }
+      $new = Fix-BareCitationListsInString -Text $new -Stats ([ref]$stats)
+      $new = Remove-RefTokensInText -Text @($new)
 
-    # Build method-blocks by consecutive caption prefixes.
-    $blocks = New-Object 'System.Collections.Generic.List[object]'
-    $bStart = $capIdx[0]
-    $bEnd = $capIdx[0]
-    $bPrefix = $capInfo[$capIdx[0]].prefix
-    $bFigs = @($capInfo[$capIdx[0]].fig)
-    for ($ci = 1; $ci -lt $capIdx.Count; $ci++) {
-      $cur = $capIdx[$ci]
-      $curPrefix = $capInfo[$cur].prefix
-      if ($curPrefix -eq $bPrefix -and ($cur - $bEnd) -le 10) {
-        $bEnd = $cur
-        $bFigs += $capInfo[$cur].fig
-      } else {
-        $blocks.Add([pscustomobject]@{ startCap = $bStart; endCap = $bEnd; prefix = $bPrefix; figs = $bFigs }) | Out-Null
-        $bStart = $cur
-        $bEnd = $cur
-        $bPrefix = $curPrefix
-        $bFigs = @($capInfo[$cur].fig)
-      }
-    }
-    $blocks.Add([pscustomobject]@{ startCap = $bStart; endCap = $bEnd; prefix = $bPrefix; figs = $bFigs }) | Out-Null
-
-    # Process blocks from bottom to top (stable deletion).
-    for ($bi = $blocks.Count - 1; $bi -ge 0; $bi--) {
-      Refresh-Paragraphs
-      $block = $blocks[$bi]
-      $capFirst = $block.startCap
-      $capLast = $block.endCap
-
-      # Span: after previous block's last caption (or after legend) up to last caption - 1.
-      $spanStart = $startIdx + 2 # heading + legend
-      if ($bi -gt 0) {
-        $prevLast = $blocks[$bi - 1].endCap
-        $spanStart = $prevLast + 1
-      }
-      $spanEnd = $capLast - 1
-      if ($spanEnd -lt $spanStart) { continue }
-
-      # Choose target paragraph to rewrite: first text-only paragraph in span.
-      $targetIdx = $null
-      $targetStyle = $bodyStyle
-      for ($j = $spanStart; $j -le $spanEnd; $j++) {
-        $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
-        if (-not $pt) { continue }
-        if (Paragraph-HasDrawing -Paragraph $paras[$j] -Nsm $nsm) { continue }
-        if ($pt -match "^4\\.4\\.") { continue }
-        if ($pt -match "^Ð Ð¸Ñ\\.") { continue }
-        $targetIdx = $j
-        $targetStyle = Paragraph-GetStyle -Paragraph $paras[$j] -Nsm $nsm
-        if (-not $targetStyle) { $targetStyle = $bodyStyle }
-        break
-      }
-      if ($null -eq $targetIdx) {
-        # No existing paragraph to rewrite; insert a new one right before first caption.
-        $insertAfter = $capFirst - 1
-        Insert-ParagraphAfterIndex -Xml $xml -Nsm $nsm -Paras $paras -AfterIndex $insertAfter -StyleVal $bodyStyle -Text " "
-        Refresh-Paragraphs
-        $targetIdx = $insertAfter + 1
-        $targetStyle = $bodyStyle
-      }
-
-      # Build source pool (text-only paragraphs in span), deleting standalone boilerplate paragraphs.
-      $pool = New-Object 'System.Collections.Generic.List[string]'
-      $toDelete = New-Object 'System.Collections.Generic.List[int]'
-      for ($j = $spanStart; $j -le $spanEnd; $j++) {
-        $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
-        if (-not $pt) { continue }
-        if ($pt -match "^Ð Ð¸Ñ\\.") { continue }
-        if ($pt -match "^4\\.4\\.") { continue }
-        if (Paragraph-HasDrawing -Paragraph $paras[$j] -Nsm $nsm) { continue }
-
-        $low = $pt.ToLowerInvariant()
-        if ($low.StartsWith("Ð»Ñ–Ð²Ð° Ð¿Ð°Ð½ÐµÐ»ÑŒ") -or $low.StartsWith("Ñ†ÐµÐ½Ñ‚Ñ€Ð°Ð»ÑŒÐ½Ð° Ð¿Ð°Ð½ÐµÐ»ÑŒ") -or $low.StartsWith("Ð¿Ñ€Ð°Ð²Ð° Ð¿Ð°Ð½ÐµÐ»ÑŒ")) {
-          $toDelete.Add($j) | Out-Null
-          $stats.panel_paras_deleted++
-          continue
-        }
-        if ($low.StartsWith("Ð´ÐµÑ‚ÐµÐºÑ†Ñ–Ñ") -or $low.StartsWith("Ð²Ð¸ÑÐ²Ð»ÐµÐ½Ð¾") -or $low.StartsWith("Ñƒ Ð½Ð¸Ð¶Ð½Ñ–Ð¹ Ñ‡Ð°ÑÑ‚Ð¸Ð½Ñ–")) {
-          $toDelete.Add($j) | Out-Null
-          $stats.detection_paras_deleted++
-          continue
-        }
-        $pool.Add($pt) | Out-Null
-        if ($j -ne $targetIdx) { $toDelete.Add($j) | Out-Null }
-      }
-
-      # Create 4-sentence paragraph from pool (use your wording, remove repeats).
-      $cites = @()
-      $sentOut = New-Object 'System.Collections.Generic.List[string]'
-      $seen = New-Object 'System.Collections.Generic.HashSet[string]'
-      foreach ($ptext in $pool) {
-        $clean = Clean-BoilerplateFromText -Text $ptext
-        foreach ($s in (Split-Sentences -Text $clean)) {
-          $s2 = Extract-AndStripCitations -Sentence $s -Cites ([ref]$cites)
-          $key = ($s2.ToLowerInvariant() -replace "\s+", " ").Trim()
-          if (-not $key) { continue }
-          if ($seen.Contains($key)) { continue }
-          [void]$seen.Add($key)
-          [void]$sentOut.Add($s2)
-          if ($sentOut.Count -ge 3) { break }
-        }
-        if ($sentOut.Count -ge 3) { break }
-      }
-      while ($sentOut.Count -lt 3) { [void]$sentOut.Add(" ") }
-
-      $figNums = @($block.figs | Sort-Object)
-      $n = $figNums[0]
-      $m = $figNums[$figNums.Count - 1]
-      $range = if ($n -eq $m) { "4.$n" } else { "4.$nâ€“4.$m" }
-      $citeMerged = Merge-CitationBlocks -Blocks ($cites | Select-Object -Unique)
-      $s4 = "ÐÐ° Ñ€Ð¸Ñ. $range Ð½Ð°Ð²ÐµÐ´ÐµÐ½Ð¾ Ñ€ÐµÐ·ÑƒÐ»ÑŒÑ‚Ð°Ñ‚Ð¸ Ð´Ð»Ñ $($block.prefix)."
-      if ($citeMerged) { $s4 = $s4.TrimEnd('.') + " " + $citeMerged + "." }
-
-      $final = (($sentOut[0].TrimEnd('.') + ".").Trim()) + " " +
-               (($sentOut[1].TrimEnd('.') + ".").Trim()) + " " +
-               (($sentOut[2].TrimEnd('.') + ".").Trim()) + " " +
-               $s4
-      $final = ($final -replace "\s{2,}", " ").Trim()
-
-      # Rewrite target paragraph, delete other text paragraphs in span.
-      Paragraph-SetStyle -Paragraph $paras[$targetIdx] -Nsm $nsm -StyleVal $targetStyle
-      Rewrite-TextOnlyParagraph -Paragraph $paras[$targetIdx] -Nsm $nsm -Text $final
-      $stats.rewritten_blocks++
-      $stats.rewritten_paras++
-
-      # Delete other paragraphs (from bottom to top).
-      foreach ($del in ($toDelete | Sort-Object -Descending)) {
-        if ($del -eq $targetIdx) { continue }
-        Remove-ParagraphAt -Paras $paras -Index $del
-        $stats.deleted_text_paras++
-        Refresh-Paragraphs
-      }
+      if ($new -ne $old) { $tNode.InnerText = $new }
     }
   }
 
@@ -517,4 +457,3 @@ try {
     Remove-Item -LiteralPath $workDir -Recurse -Force
   }
 }
-

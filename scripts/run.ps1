@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory = $false)][switch]$ForceDirty,
   [Parameter(Mandatory = $false)][switch]$DeleteStruckText,
   [Parameter(Mandatory = $false)][switch]$NoGit,
@@ -26,13 +26,28 @@ function Resolve-InputDocxPath {
   return (Resolve-Path -LiteralPath $Path).Path
 }
 
+function Derive-OutputDocxFromInput {
+  param(
+    [Parameter(Mandatory = $true)][string]$InputPath,
+    [Parameter(Mandatory = $true)][int]$TargetVersion
+  )
+  $leaf = [System.IO.Path]::GetFileName($InputPath)
+  $m = [regex]::Match($leaf, "^(?<base>.+_)(?<num>\\d+)\\.docx$", [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if (-not $m.Success) {
+    throw "InputDocx leaf name must match '*_<N>.docx' when -TargetVersion is used."
+  }
+  $outLeaf = "{0}{1}.docx" -f $m.Groups["base"].Value, $TargetVersion
+  return (Join-Path $repoRoot $outLeaf)
+}
+
 # Determine output docx + version
 $bump = $null
 $outDocx = $null
 
 if ($TargetVersion) {
   if (-not $InputDocx) { throw "When -TargetVersion is set, -InputDocx is required." }
-  $outDocx = Join-Path $repoRoot ("dis_Кондратов_{0}.docx" -f $TargetVersion)
+  $inAbs = Resolve-InputDocxPath -Path $InputDocx
+  $outDocx = Derive-OutputDocxFromInput -InputPath $inAbs -TargetVersion $TargetVersion
   $bump = [pscustomobject]@{ version_to = $TargetVersion; output = $outDocx }
 } else {
   $bumpJson = & "$PSScriptRoot\\bump_docx_version.ps1"
@@ -87,7 +102,7 @@ if ($OnlyRewrite44) {
 if (-not $NoGit) {
   git add -- (Split-Path -Leaf $outDocx) scripts
   if ($OnlyRewrite44) {
-    git commit -m ("v{0}: rewrite §4.4 (style-safe) + refs in 4th sentence" -f $bump.version_to)
+    git commit -m ("v{0}: rewrite 4.4.1-4.4.5 text (style-safe) + refs in 4th sentence" -f $bump.version_to)
   } else {
     git commit -m ("v{0}: normalize text + 4.4 cleanup; scripts" -f $bump.version_to)
   }
