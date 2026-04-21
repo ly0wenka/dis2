@@ -48,6 +48,7 @@ try {
     fix44_list_paras_flattened = 0
     fix44_short_paras_merged = 0
     fix44_panel_dupes_removed = 0
+    fix44_detection_paras_removed = 0
     fix44_ref_inserted = 0
   }
 
@@ -131,6 +132,24 @@ try {
       [void]$paras[$AfterIndex].ParentNode.InsertAfter($pNew, $paras[$AfterIndex])
       $stats.fix44_ref_inserted++
     }
+
+    # Remove repeated DETR detection boilerplate like "6 об’єктів виявлено" across §4.4.1–§4.4.5
+    for ($j = $idxAfter445 - 1; $j -ge $idx441; $j--) {
+      $txt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
+      if (-not $txt) { continue }
+      $lower = $txt.ToLowerInvariant()
+      if ($txt -match "об.?єктів\\s+виявлено" -or $lower.StartsWith("детекція об")) {
+        [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
+        $stats.fix44_detection_paras_removed++
+      }
+    }
+    $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
+    $idx441 = Find-ParaIndexByPrefix -Prefix "4.4.1" -StartAt $startSearchAt
+    $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+    if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
+
+    # Insert one consolidated note once (applies to all figures in §4.4.1–§4.4.5)
+    Insert-ParagraphAfter -AfterIndex $idx441 -Text "У всіх наведених далі ілюстраціях розділу 4.4 блок детекції моделі DETR відображає кількість виявлених у кадрі динамічних об’єктів (наприклад, «6 об’єктів виявлено»). Це значення використовується для подальшого зв’язування оцінених параметрів руху та глибини з конкретними об’єктами; тому однакові службові пояснення не дублюються для кожного рисунка окремо."
 
     # Insert reference sentences under 4.4.4 and 4.4.5 headings (if present)
     $idx444 = Find-ParaIndexByPrefix -Prefix "4.4.4" -StartAt $idx441
