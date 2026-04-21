@@ -49,6 +49,7 @@ try {
     fix44_short_paras_merged = 0
     fix44_panel_dupes_removed = 0
     fix44_detection_paras_removed = 0
+    fix44_detection_text_removed = 0
     fix44_ref_inserted = 0
   }
 
@@ -282,6 +283,45 @@ try {
         }
       }
       $j++
+    }
+
+    # Remove remaining embedded DETR detection boilerplate inside paragraphs (when it was merged into longer text).
+    for ($j = $idx441; $j -lt $idxAfter445; $j++) {
+      $p = $paras[$j]
+      $tNodes = @($p.SelectNodes(".//w:t", $nsm))
+      if ($tNodes.Count -eq 0) { continue }
+
+      $changed = $false
+      foreach ($tNode in $tNodes) {
+        $orig = $tNode.InnerText
+        $new = $orig
+
+        # Common repeated sentences/phrases (keep the content elsewhere in the consolidated note).
+        $new = $new -replace "Детекц[іяі][^\\.]{0,220}DETR[^\\.]{0,220}\\.?\\s*", ""
+        $new = $new -replace "У нижній частині[^\\.]{0,260}об.?єктів[^\\.]{0,80}виявлено[^\\.]{0,120}\\.?\\s*", ""
+        $new = $new -replace "«\\s*\\d+\\s+об.?єктів\\s+виявлено\\s*»\\s*", ""
+
+        if ($new -ne $orig) {
+          $changed = $true
+          $tNode.InnerText = $new
+        }
+      }
+
+      if ($changed) {
+        $stats.fix44_detection_text_removed++
+        # Clean up spacing in the paragraph (lightweight)
+        $full = Get-ParagraphText -Paragraph $p -Nsm $nsm
+        if ($full) {
+          $first = $p.SelectSingleNode(".//w:t", $nsm)
+          if ($first) {
+            $first.InnerText = $full
+            # Remove extra w:t nodes to avoid duplicate leftover fragments after cleanup.
+            for ($k = $tNodes.Count - 1; $k -ge 1; $k--) {
+              [void]$tNodes[$k].ParentNode.RemoveChild($tNodes[$k])
+            }
+          }
+        }
+      }
     }
   }
 
