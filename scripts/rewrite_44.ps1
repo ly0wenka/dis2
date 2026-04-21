@@ -186,6 +186,9 @@ function Clean-BoilerplateFromText {
   $t = [regex]::Replace($t, "На\s+лівій\s+панелі.*?\.\s*", "", $rx)
   $t = [regex]::Replace($t, "На\s+центральній\s+панелі.*?\.\s*", "", $rx)
   $t = [regex]::Replace($t, "На\s+правій\s+панелі.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\s+лівій\s+панелі.*?[,;]\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\s+центральній\s+панелі.*?[,;]\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\s+правій\s+панелі.*?[,;]\s*", "", $rx)
   $t = [regex]::Replace($t, "\b\d+\s+objects\s+detected\b\.?\s*", "", $rx)
   $t = ($t -replace "\s{2,}", " ").Trim()
   return $t
