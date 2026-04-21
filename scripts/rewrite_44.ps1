@@ -76,7 +76,7 @@ function New-ParagraphWithStyleAndText {
   param(
     [Parameter(Mandatory = $true)][System.Xml.XmlDocument]$Xml,
     [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm,
-    [Parameter(Mandatory = $true)][string]$StyleVal,
+    [Parameter(Mandatory = $false)][AllowEmptyString()][string]$StyleVal,
     [Parameter(Mandatory = $true)][string]$Text
   )
   $pNew = $Xml.CreateElement("w", "p", $Nsm.LookupNamespace("w"))
