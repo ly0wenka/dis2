@@ -252,37 +252,31 @@ try {
   $body = $xml.SelectSingleNode("/w:document/w:body", $nsm)
   if (-not $body) { throw "Missing w:body." }
 
-  $paras = @($body.SelectNodes("./w:p", $nsm))
+  $secNames = @("4.4.1", "4.4.2", "4.4.3", "4.4.4", "4.4.5")
 
-  $h441 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.1"
-  $h442 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.2"
-  $h443 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.3"
-  $h444 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.4"
-  $h445 = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.5"
-  if ($h441 -lt 0 -or $h442 -lt 0 -or $h443 -lt 0 -or $h444 -lt 0 -or $h445 -lt 0) {
-    throw "Could not locate body headings 4.4.1-4.4.5 (skipping TOC)."
-  }
-
-  $h45 = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($h445 + 1) -Pattern "^4\.5(\s|$)"
-  if ($h45 -lt 0) { throw "Could not find next heading 4.5 after 4.4.5." }
-
-  $sections = @(
-    @{ name = "4.4.1"; start = $h441; end = $h442 - 1 },
-    @{ name = "4.4.2"; start = $h442; end = $h443 - 1 },
-    @{ name = "4.4.3"; start = $h443; end = $h444 - 1 },
-    @{ name = "4.4.4"; start = $h444; end = $h445 - 1 },
-    @{ name = "4.4.5"; start = $h445; end = $h45 - 1 }
-  )
-
-  foreach ($sec in $sections) {
-    # Refresh paragraph list each section, because we insert/delete.
+  foreach ($secName in $secNames) {
+    # Refresh paragraph list each section, because we insert/delete and indices shift.
     $paras = @($body.SelectNodes("./w:p", $nsm))
 
-    $startIdx = [int]$sec.start
-    $endIdx = [int]$sec.end
-    $secName = [string]$sec.name
+    $startIdx = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle $secName
+    if ($startIdx -lt 0) {
+      throw "Could not locate body heading $secName (skipping TOC)."
+    }
 
-    if ($endIdx -le $startIdx -or $startIdx -lt 0 -or $endIdx -ge $paras.Count) { continue }
+    $endHeadingIdx = -1
+    if ($secName -eq "4.4.5") {
+      $endHeadingIdx = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($startIdx + 1) -Pattern "^4\.5(\s|$)"
+    } else {
+      if ($secName -notmatch "^4\.4\.(\d)$") { throw "Unexpected section name: $secName" }
+      $next = "4.4.{0}" -f ([int]$Matches[1] + 1)
+      $endHeadingIdx = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle $next
+    }
+    if ($endHeadingIdx -lt 0 -or $endHeadingIdx -le $startIdx) {
+      throw "Could not determine end boundary for $secName."
+    }
+
+    $endIdx = $endHeadingIdx - 1
+    if ($endIdx -le $startIdx -or $endIdx -ge $paras.Count) { continue }
 
     # Pick a body style for inserted paragraphs from the first non-empty paragraph after heading.
     $bodyStyle = ""
