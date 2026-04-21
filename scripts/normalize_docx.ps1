@@ -141,7 +141,7 @@ try {
     # - Remove duplicated consolidated note right under 4.4.1 (the duplicates accumulate across runs),
     # - Remove standalone detection lines across 4.4.1–4.4.5,
     # - Re-insert exactly one consolidated note under 4.4.1.
-    $noteSig = "блок\\s+детекції\\s+моделі\\s+DETR"
+    $noteSig = "блок\s+детекції\s+моделі\s+DETR"
     $noteText = "У всіх наведених далі ілюстраціях розділу 4.4 блок детекції моделі DETR відображає кількість виявлених у кадрі динамічних об’єктів (наприклад, «6 об’єктів виявлено»). Це значення використовується для подальшого зв’язування оцінених параметрів руху та глибини з конкретними об’єктами; тому однакові службові пояснення не дублюються для кожного рисунка окремо."
 
     # Remove any existing consolidated note paragraphs in a small window below 4.4.1 (robust even if range bounds drift).
@@ -160,7 +160,7 @@ try {
       $txt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
       if (-not $txt) { continue }
       $lower = $txt.ToLowerInvariant()
-      if ($txt -match "об.?єктів\\s+виявлено" -or $lower.StartsWith("детекція об")) {
+      if ($txt -match "об.?єктів\s+виявлено" -or $lower.StartsWith("детекція об")) {
         [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
         $stats.fix44_detection_paras_removed++
       }
@@ -175,12 +175,12 @@ try {
     for ($j = $idxAfter445 - 1; $j -ge $idx441; $j--) {
       $txt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
       if (-not $txt) { continue }
-      if ($txt -match "^Параметри\\s+руху\\s+обчиснюються\\s+за\\s+постановкою") {
+      if ($txt -match "^Параметри\s+руху\s+обчиснюються\s+за\s+постановкою") {
         [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
         $stats.fix44_ref_paras_removed++
         continue
       }
-      if ($txt -match "^Параметри\\s+руху\\s+для\\s+локальної\\s+моделі") {
+      if ($txt -match "^Параметри\s+руху\s+для\s+локальної\s+моделі") {
         [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
         $stats.fix44_ref_paras_removed++
       }
@@ -333,14 +333,14 @@ try {
 
       $full = Get-ParagraphText -Paragraph $p -Nsm $nsm
       if (-not $full) { continue }
-      if ($full -match "блок\\s+детекції\\s+моделі\\s+DETR") { continue } # keep consolidated note
+      if ($full -match "блок\s+детекції\s+моделі\s+DETR") { continue } # keep consolidated note
 
       $newFull = $full
-      $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,260}DETR[^\\.]{0,260}\\.?\\s*", ""
-      $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,80}нижній частині[^\\.]{0,360}виявлено[^\\.]{0,200}\\.?\\s*", ""
-      $newFull = $newFull -replace "У нижній частині[^\\.]{0,360}виявлено[^\\.]{0,200}\\.?\\s*", ""
-      $newFull = $newFull -replace "«\\s*\\d+\\s+об.?єктів\\s+виявлено\\s*»\\s*", ""
-      $newFull = $newFull -replace "\\s{2,}", " "
+      $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,260}DETR[^\\.]{0,260}\\.?\s*", ""
+      $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,80}нижній частині[^\\.]{0,360}виявлено[^\\.]{0,200}\\.?\s*", ""
+      $newFull = $newFull -replace "У нижній частині[^\\.]{0,360}виявлено[^\\.]{0,200}\\.?\s*", ""
+      $newFull = $newFull -replace "«\s*\d+\s+об.?єктів\s+виявлено\s*»\s*", ""
+      $newFull = $newFull -replace "\s{2,}", " "
       $newFull = $newFull.Trim()
 
       if ($newFull -ne $full) {
