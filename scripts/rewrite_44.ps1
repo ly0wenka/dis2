@@ -87,7 +87,7 @@ function New-ParagraphWithStyleAndText {
     [void]$pPr.AppendChild($pStyle)
   }
   [void]$pNew.AppendChild($pPr)
-  Rewrite-TextOnlyParagraph -Paragraph $pNew -Nsm $Nsm -Text $Text
+  $null = Rewrite-TextOnlyParagraph -Paragraph $pNew -Nsm $Nsm -Text $Text
   return $pNew
 }
 
