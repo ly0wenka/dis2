@@ -123,6 +123,21 @@ function Find-NextHeadingIndexByRegex {
   return -1
 }
 
+function Get-SectionEndHeadingIndex {
+  param(
+    [Parameter(Mandatory = $true)][System.Xml.XmlNode[]]$Paras,
+    [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm,
+    [Parameter(Mandatory = $true)][int]$StartIdx,
+    [Parameter(Mandatory = $true)][string]$SecName
+  )
+  if ($SecName -eq "4.4.5") {
+    return (Find-NextHeadingIndexByRegex -Paras $Paras -Nsm $Nsm -StartIndex ($StartIdx + 1) -Pattern "^4\.5(\s|$)")
+  }
+  if ($SecName -notmatch "^4\.4\.(\d)$") { return -1 }
+  $next = "4.4.{0}" -f ([int]$Matches[1] + 1)
+  return (Find-BodyHeadingIndex -Paras $Paras -Nsm $Nsm -Needle $next)
+}
+
 function Try-ParseFigureCaption {
   param([Parameter(Mandatory = $true)][string]$Text)
   # Example: "Рис. 4.62 — Farneback_..."
@@ -164,6 +179,9 @@ function Clean-BoilerplateFromText {
   $t = [regex]::Replace($t, "Ліва\s+панель.*?\.\s*", "", $rx)
   $t = [regex]::Replace($t, "Центральна\s+панель.*?\.\s*", "", $rx)
   $t = [regex]::Replace($t, "Права\s+панель.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "ліва\s+панель.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "центральна\s+панель.*?\.\s*", "", $rx)
+  $t = [regex]::Replace($t, "права\s+панель.*?\.\s*", "", $rx)
   $t = [regex]::Replace($t, "На\s+лівій\s+панелі.*?\.\s*", "", $rx)
   $t = [regex]::Replace($t, "На\s+центральній\s+панелі.*?\.\s*", "", $rx)
   $t = [regex]::Replace($t, "На\s+правій\s+панелі.*?\.\s*", "", $rx)
@@ -264,14 +282,7 @@ try {
       throw "Could not locate body heading $secName (skipping TOC)."
     }
 
-    $endHeadingIdx = -1
-    if ($secName -eq "4.4.5") {
-      $endHeadingIdx = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($startIdx + 1) -Pattern "^4\.5(\s|$)"
-    } else {
-      if ($secName -notmatch "^4\.4\.(\d)$") { throw "Unexpected section name: $secName" }
-      $next = "4.4.{0}" -f ([int]$Matches[1] + 1)
-      $endHeadingIdx = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle $next
-    }
+    $endHeadingIdx = Get-SectionEndHeadingIndex -Paras $paras -Nsm $nsm -StartIdx $startIdx -SecName $secName
     if ($endHeadingIdx -lt 0 -or $endHeadingIdx -le $startIdx) {
       throw "Could not determine end boundary for $secName."
     }
@@ -299,7 +310,8 @@ try {
       [void]$body.InsertAfter($pLegend, $paras[$startIdx])
       $stats.inserted_legends++
       $paras = @($body.SelectNodes("./w:p", $nsm))
-      $endIdx++
+      $endHeadingIdx = Get-SectionEndHeadingIndex -Paras $paras -Nsm $nsm -StartIdx $startIdx -SecName $secName
+      if ($endHeadingIdx -gt $startIdx) { $endIdx = $endHeadingIdx - 1 }
     }
 
     # Recompute because we may have inserted.
@@ -403,9 +415,13 @@ try {
 
         # Refresh after insertion (indices shift).
         $paras = @($body.SelectNodes("./w:p", $nsm))
-        $endIdx++
       }
     }
+
+    # Recompute end boundary after all insertions within the subsection.
+    $paras = @($body.SelectNodes("./w:p", $nsm))
+    $endHeadingIdx = Get-SectionEndHeadingIndex -Paras $paras -Nsm $nsm -StartIdx $startIdx -SecName $secName
+    if ($endHeadingIdx -gt $startIdx) { $endIdx = $endHeadingIdx - 1 }
 
     # Delete boilerplate paragraphs in the subsection (style-safe).
     $paras = @($body.SelectNodes("./w:p", $nsm))
