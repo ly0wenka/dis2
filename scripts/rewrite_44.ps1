@@ -463,6 +463,43 @@ try {
     $stats.sections_processed += $secName
   }
 
+  # Final sweep: ensure panel/detection boilerplate is removed across the whole 4.4.1-4.4.5 range.
+  $paras = @($body.SelectNodes("./w:p", $nsm))
+  $rangeStart = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.1"
+  if ($rangeStart -ge 0) {
+    $rangeEndHeading = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($rangeStart + 1) -Pattern "^4\.5(\s|$)"
+    if ($rangeEndHeading -gt $rangeStart) {
+      $rangeEnd = $rangeEndHeading - 1
+      $toDelete2 = New-Object System.Collections.Generic.List[System.Xml.XmlNode]
+      for ($i = $rangeStart + 1; $i -le $rangeEnd -and $i -lt $paras.Count; $i++) {
+        $pt = Get-ParagraphText -Paragraph $paras[$i] -Nsm $nsm
+        if (-not $pt) { continue }
+        if ($pt -match "^4\.4\.[1-5]\b") { continue }
+        if ($pt -match "^Рис\.") { continue }
+        if (Paragraph-HasDrawing -Paragraph $paras[$i] -Nsm $nsm) { continue }
+        if (Paragraph-HasBreak -Paragraph $paras[$i] -Nsm $nsm) { continue }
+
+        if (Is-BoilerplateParagraphText -Text $pt) {
+          $toDelete2.Add($paras[$i]) | Out-Null
+          continue
+        }
+
+        if ($pt -match "(Ліва панель|Центральна панель|Права панель|ліва панель|центральна панель|права панель|objects detected|Детекція|Виявлено)") {
+          $clean = Clean-BoilerplateFromText -Text $pt
+          if ($clean -and $clean -ne $pt) {
+            Paragraph-RemoveNumbering -Paragraph $paras[$i] -Nsm $nsm
+            Rewrite-TextOnlyParagraph -Paragraph $paras[$i] -Nsm $nsm -Text $clean
+            $stats.cleaned_inline_boilerplate_paras++
+          }
+        }
+      }
+      foreach ($node in $toDelete2) {
+        [void]$node.ParentNode.RemoveChild($node)
+        $stats.deleted_boilerplate_paras++
+      }
+    }
+  }
+
   # Repo-wide citation safety pass (style-preserving): normalize ';' inside brackets + wrap bare lists when safe.
   $paras = @($body.SelectNodes("./w:p", $nsm))
   foreach ($p in $paras) {
