@@ -454,7 +454,7 @@ try {
       if (Paragraph-HasDrawing -Paragraph $paras[$i] -Nsm $nsm) { continue }
       if (Paragraph-HasBreak -Paragraph $paras[$i] -Nsm $nsm) { continue }
 
-      if ($pt -match "(Ліва панель|Центральна панель|Права панель|objects detected|Детекція|Виявлено)") {
+      if ($pt -match "(Ліва панель|Центральна панель|Права панель|На лівій панелі|На центральній панелі|На правій панелі|objects detected|Детекція|Виявлено)") {
         $clean = Clean-BoilerplateFromText -Text $pt
         if ($clean -and $clean -ne $pt) {
           Paragraph-RemoveNumbering -Paragraph $paras[$i] -Nsm $nsm
@@ -487,7 +487,7 @@ try {
           continue
         }
 
-        if ($pt -match "(Ліва панель|Центральна панель|Права панель|ліва панель|центральна панель|права панель|objects detected|Детекція|Виявлено)") {
+        if ($pt -match "(Ліва панель|Центральна панель|Права панель|На лівій панелі|На центральній панелі|На правій панелі|ліва панель|центральна панель|права панель|на лівій панелі|на центральній панелі|на правій панелі|objects detected|Детекція|Виявлено)") {
           $clean = Clean-BoilerplateFromText -Text $pt
           if ($clean -and $clean -ne $pt) {
             Paragraph-RemoveNumbering -Paragraph $paras[$i] -Nsm $nsm
