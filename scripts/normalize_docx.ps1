@@ -140,6 +140,8 @@ try {
       if (-not $txt) { continue }
       $lower = $txt.ToLowerInvariant()
       if ($txt -match "об.?єктів\\s+виявлено" -or $lower.StartsWith("детекція об")) {
+        # Keep the consolidated note; remove other standalone detection lines.
+        if ($txt -match "блок\\s+детекції\\s+моделі\\s+DETR") { continue }
         [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
         $stats.fix44_detection_paras_removed++
       }
@@ -149,18 +151,44 @@ try {
     $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
     if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
 
-    # Insert one consolidated note once (applies to all figures in §4.4.1–§4.4.5)
-    Insert-ParagraphAfter -AfterIndex $idx441 -Text "У всіх наведених далі ілюстраціях розділу 4.4 блок детекції моделі DETR відображає кількість виявлених у кадрі динамічних об’єктів (наприклад, «6 об’єктів виявлено»). Це значення використовується для подальшого зв’язування оцінених параметрів руху та глибини з конкретними об’єктами; тому однакові службові пояснення не дублюються для кожного рисунка окремо."
+    # Ensure exactly one consolidated note (applies to all figures in §4.4.1–§4.4.5)
+    $noteText = "У всіх наведених далі ілюстраціях розділу 4.4 блок детекції моделі DETR відображає кількість виявлених у кадрі динамічних об’єктів (наприклад, «6 об’єктів виявлено»). Це значення використовується для подальшого зв’язування оцінених параметрів руху та глибини з конкретними об’єктами; тому однакові службові пояснення не дублюються для кожного рисунка окремо."
+    $noteIdxs = @()
+    for ($j = $idx441; $j -lt $idxAfter445; $j++) {
+      $txt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
+      if ($txt -match "блок\\s+детекції\\s+моделі\\s+DETR") { $noteIdxs += $j }
+    }
+    if ($noteIdxs.Count -eq 0) {
+      Insert-ParagraphAfter -AfterIndex $idx441 -Text $noteText
+      $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
+      $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+      if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
+    } elseif ($noteIdxs.Count -gt 1) {
+      # Remove duplicates, keep the first note.
+      for ($k = $noteIdxs.Count - 1; $k -ge 1; $k--) {
+        [void]$paras[$noteIdxs[$k]].ParentNode.RemoveChild($paras[$noteIdxs[$k]])
+        $stats.fix44_detection_paras_removed++
+      }
+      $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
+      $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+      if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
+    }
 
-    # Insert reference sentences under 4.4.4 and 4.4.5 headings (if present)
+    # Insert reference sentences under 4.4.4 and 4.4.5 headings (if present) (idempotent)
     $idx444 = Find-ParaIndexByPrefix -Prefix "4.4.4" -StartAt $idx441
     if ($null -ne $idx444) {
-      Insert-ParagraphAfter -AfterIndex $idx444 -Text "Параметри руху обчиснюються за постановкою та ітераційною схемою розд. 2, формули (2.1)-(2.10)."
+      $nextTxt = Get-ParagraphText -Paragraph $paras[$idx444 + 1] -Nsm $nsm
+      if ($nextTxt -notmatch "^Параметри\\s+руху\\s+обчиснюються\\s+за\\s+постановкою") {
+        Insert-ParagraphAfter -AfterIndex $idx444 -Text "Параметри руху обчиснюються за постановкою та ітераційною схемою розд. 2, формули (2.1)-(2.10)."
+      }
     }
     $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
     $idx445 = Find-ParaIndexByPrefix -Prefix "4.4.5" -StartAt $idx441
     if ($null -ne $idx445) {
-      Insert-ParagraphAfter -AfterIndex $idx445 -Text "Параметри руху для локальної моделі оцінювання руху наведено в розд. 2, формули (2.11)-(2.24)."
+      $nextTxt = Get-ParagraphText -Paragraph $paras[$idx445 + 1] -Nsm $nsm
+      if ($nextTxt -notmatch "^Параметри\\s+руху\\s+для\\s+локальної\\s+моделі") {
+        Insert-ParagraphAfter -AfterIndex $idx445 -Text "Параметри руху для локальної моделі оцінювання руху наведено в розд. 2, формули (2.11)-(2.24)."
+      }
     }
     $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
     $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
@@ -291,35 +319,25 @@ try {
       $tNodes = @($p.SelectNodes(".//w:t", $nsm))
       if ($tNodes.Count -eq 0) { continue }
 
-      $changed = $false
-      foreach ($tNode in $tNodes) {
-        $orig = $tNode.InnerText
-        $new = $orig
+      $full = Get-ParagraphText -Paragraph $p -Nsm $nsm
+      if (-not $full) { continue }
+      if ($full -match "блок\\s+детекції\\s+моделі\\s+DETR") { continue } # keep consolidated note
 
-        # Common repeated sentences/phrases (keep the content elsewhere in the consolidated note).
-        $new = $new -replace "Детекц[іяі][^\\.]{0,220}DETR[^\\.]{0,220}\\.?\\s*", ""
-        $new = $new -replace "У нижній частині[^\\.]{0,260}об.?єктів[^\\.]{0,80}виявлено[^\\.]{0,120}\\.?\\s*", ""
-        $new = $new -replace "«\\s*\\d+\\s+об.?єктів\\s+виявлено\\s*»\\s*", ""
+      $newFull = $full
+      $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,260}DETR[^\\.]{0,260}\\.?\\s*", ""
+      $newFull = $newFull -replace "У нижній частині[^\\.]{0,320}об.?єктів[^\\.]{0,120}виявлено[^\\.]{0,160}\\.?\\s*", ""
+      $newFull = $newFull -replace "«\\s*\\d+\\s+об.?єктів\\s+виявлено\\s*»\\s*", ""
+      $newFull = $newFull -replace "\\s{2,}", " "
+      $newFull = $newFull.Trim()
 
-        if ($new -ne $orig) {
-          $changed = $true
-          $tNode.InnerText = $new
-        }
-      }
-
-      if ($changed) {
-        $stats.fix44_detection_text_removed++
-        # Clean up spacing in the paragraph (lightweight)
-        $full = Get-ParagraphText -Paragraph $p -Nsm $nsm
-        if ($full) {
-          $first = $p.SelectSingleNode(".//w:t", $nsm)
-          if ($first) {
-            $first.InnerText = $full
-            # Remove extra w:t nodes to avoid duplicate leftover fragments after cleanup.
-            for ($k = $tNodes.Count - 1; $k -ge 1; $k--) {
-              [void]$tNodes[$k].ParentNode.RemoveChild($tNodes[$k])
-            }
+      if ($newFull -ne $full) {
+        $first = $p.SelectSingleNode(".//w:t", $nsm)
+        if ($first) {
+          $first.InnerText = $newFull
+          for ($k = $tNodes.Count - 1; $k -ge 1; $k--) {
+            [void]$tNodes[$k].ParentNode.RemoveChild($tNodes[$k])
           }
+          $stats.fix44_detection_text_removed++
         }
       }
     }
