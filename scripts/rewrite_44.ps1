@@ -235,6 +235,7 @@ $stats = [ordered]@{
   inserted_legends = 0
   inserted_summaries = 0
   deleted_boilerplate_paras = 0
+  cleaned_inline_boilerplate_paras = 0
   citation_semicolons_normalized = 0
   citation_lists_wrapped = 0
   citation_lists_skipped_mixed = 0
@@ -421,6 +422,26 @@ try {
     foreach ($node in $toDelete) {
       [void]$node.ParentNode.RemoveChild($node)
       $stats.deleted_boilerplate_paras++
+    }
+
+    # Clean inline boilerplate fragments inside remaining body paragraphs (style-safe).
+    $paras = @($body.SelectNodes("./w:p", $nsm))
+    for ($i = $startIdx + 1; $i -le $endIdx -and $i -lt $paras.Count; $i++) {
+      $pt = Get-ParagraphText -Paragraph $paras[$i] -Nsm $nsm
+      if (-not $pt) { continue }
+      if ($pt -match "^4\.4\.[1-5]\b") { continue }
+      if ($pt -match "^Рис\.") { continue }
+      if (Paragraph-HasDrawing -Paragraph $paras[$i] -Nsm $nsm) { continue }
+      if (Paragraph-HasBreak -Paragraph $paras[$i] -Nsm $nsm) { continue }
+
+      if ($pt -match "(Ліва панель|Центральна панель|Права панель|objects detected|Детекція|Виявлено)") {
+        $clean = Clean-BoilerplateFromText -Text $pt
+        if ($clean -and $clean -ne $pt) {
+          Paragraph-RemoveNumbering -Paragraph $paras[$i] -Nsm $nsm
+          Rewrite-TextOnlyParagraph -Paragraph $paras[$i] -Nsm $nsm -Text $clean
+          $stats.cleaned_inline_boilerplate_paras++
+        }
+      }
     }
 
     $stats.sections_processed += $secName
