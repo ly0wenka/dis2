@@ -272,6 +272,7 @@ try {
   if (-not $body) { throw "Missing w:body." }
 
   $secNames = @("4.4.1", "4.4.2", "4.4.3", "4.4.4", "4.4.5")
+  $rangeStartBody = -1
 
   foreach ($secName in $secNames) {
     # Refresh paragraph list each section, because we insert/delete and indices shift.
@@ -281,6 +282,7 @@ try {
     if ($startIdx -lt 0) {
       throw "Could not locate body heading $secName (skipping TOC)."
     }
+    if ($secName -eq "4.4.1" -and $rangeStartBody -lt 0) { $rangeStartBody = $startIdx }
 
     $endHeadingIdx = Get-SectionEndHeadingIndex -Paras $paras -Nsm $nsm -StartIdx $startIdx -SecName $secName
     if ($endHeadingIdx -lt 0 -or $endHeadingIdx -le $startIdx) {
@@ -465,13 +467,12 @@ try {
 
   # Final sweep: ensure panel/detection boilerplate is removed across the whole 4.4.1-4.4.5 range.
   $paras = @($body.SelectNodes("./w:p", $nsm))
-  $rangeStart = Find-BodyHeadingIndex -Paras $paras -Nsm $nsm -Needle "4.4.1"
-  if ($rangeStart -ge 0) {
-    $rangeEndHeading = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($rangeStart + 1) -Pattern "^4\.5(\s|$)"
-    if ($rangeEndHeading -gt $rangeStart) {
+  if ($rangeStartBody -ge 0) {
+    $rangeEndHeading = Find-NextHeadingIndexByRegex -Paras $paras -Nsm $nsm -StartIndex ($rangeStartBody + 1) -Pattern "^4\.5(\s|$)"
+    if ($rangeEndHeading -gt $rangeStartBody) {
       $rangeEnd = $rangeEndHeading - 1
       $toDelete2 = New-Object System.Collections.Generic.List[System.Xml.XmlNode]
-      for ($i = $rangeStart + 1; $i -le $rangeEnd -and $i -lt $paras.Count; $i++) {
+      for ($i = $rangeStartBody + 1; $i -le $rangeEnd -and $i -lt $paras.Count; $i++) {
         $pt = Get-ParagraphText -Paragraph $paras[$i] -Nsm $nsm
         if (-not $pt) { continue }
         if ($pt -match "^4\.4\.[1-5]\b") { continue }
