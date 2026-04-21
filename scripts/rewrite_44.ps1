@@ -30,7 +30,8 @@ function Paragraph-HasBreak {
     [Parameter(Mandatory = $true)][System.Xml.XmlNode]$Paragraph,
     [Parameter(Mandatory = $true)][System.Xml.XmlNamespaceManager]$Nsm
   )
-  if ($Paragraph.SelectSingleNode(".//w:br[@w:type='page'] | .//w:lastRenderedPageBreak | .//w:pPr/w:sectPr", $Nsm)) {
+  # Treat lastRenderedPageBreak as a rendering artifact (safe to edit/delete around it).
+  if ($Paragraph.SelectSingleNode(".//w:br[@w:type='page'] | .//w:pPr/w:sectPr", $Nsm)) {
     return $true
   }
   return $false
