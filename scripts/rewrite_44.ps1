@@ -300,6 +300,7 @@ try {
     if (-not $nextTxt.StartsWith("Інтерпретація панелей:")) {
       $legendText = "Інтерпретація панелей: ліва — оптичний потік; центральна — карта глибини; права — об’єднане зображення. Службові фрази про детекцію (кількість виявлених об’єктів) не повторюються для кожного рисунка."
       $pLegend = New-ParagraphWithStyleAndText -Xml $xml -Nsm $nsm -StyleVal $bodyStyle -Text $legendText
+      if ($pLegend -is [object[]]) { $pLegend = $pLegend[-1] }
       [void]$body.InsertAfter($pLegend, $paras[$startIdx])
       $stats.inserted_legends++
       $paras = @($body.SelectNodes("./w:p", $nsm))
@@ -401,6 +402,7 @@ try {
         $final = ($final -replace "\s{2,}", " ").Trim()
 
         $pSum = New-ParagraphWithStyleAndText -Xml $xml -Nsm $nsm -StyleVal $bodyStyle -Text $final
+        if ($pSum -is [object[]]) { $pSum = $pSum[-1] }
         [void]$body.InsertBefore($pSum, $paras[$insertBeforeIdx])
         $stats.inserted_summaries++
 
