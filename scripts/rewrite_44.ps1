@@ -254,6 +254,7 @@ $stats = [ordered]@{
   inserted_summaries = 0
   deleted_boilerplate_paras = 0
   cleaned_inline_boilerplate_paras = 0
+  deleted_panel_standalone_global = 0
   citation_semicolons_normalized = 0
   citation_lists_wrapped = 0
   citation_lists_skipped_mixed = 0
@@ -499,6 +500,28 @@ try {
         $stats.deleted_boilerplate_paras++
       }
     }
+  }
+
+  # Global pass: remove standalone panel paragraphs (they are boilerplate even outside 4.4).
+  $paras = @($body.SelectNodes("./w:p", $nsm))
+  $toDeleteGlobal = New-Object System.Collections.Generic.List[System.Xml.XmlNode]
+  foreach ($p in $paras) {
+    $pt = Get-ParagraphText -Paragraph $p -Nsm $nsm
+    if (-not $pt) { continue }
+    if ($pt -match "^Рис\.") { continue }
+    if ($pt -match "^Табл\.") { continue }
+    if ($pt -match "^4\.\d") { continue }
+    if (Paragraph-HasDrawing -Paragraph $p -Nsm $nsm) { continue }
+    if (Paragraph-HasBreak -Paragraph $p -Nsm $nsm) { continue }
+
+    $low = $pt.Trim().ToLowerInvariant()
+    if ($low -match "^(ліва панель|центральна панель|права панель|на лівій панелі|на центральній панелі|на правій панелі)\b") {
+      $toDeleteGlobal.Add($p) | Out-Null
+    }
+  }
+  foreach ($node in $toDeleteGlobal) {
+    [void]$node.ParentNode.RemoveChild($node)
+    $stats.deleted_panel_standalone_global++
   }
 
   # Repo-wide citation safety pass (style-preserving): normalize ';' inside brackets + wrap bare lists when safe.
