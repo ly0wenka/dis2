@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory = $true)][string]$InputDocx,
   [Parameter(Mandatory = $true)][string]$OutputDocx,
   [Parameter(Mandatory = $true)][string]$ReportPath
@@ -154,15 +154,15 @@ function Clean-BoilerplateFromText {
   $rx = [System.Text.RegularExpressions.RegexOptions]::Singleline -bor [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
   $t = $Text
   # Panel/detection phrases.
-  $t = [regex]::Replace($t, "Детекція\\s+об’єктів\\.?\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Виявлено\\s+\\d+\\s+об.?єктів\\s+моделлю\\s+DETR\\.?\\s*", "", $rx)
-  $t = [regex]::Replace($t, "У\\s+нижній\\s+частині.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Ліва\\s+панель.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Центральна\\s+панель.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "Права\\s+панель.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "На\\s+лівій\\s+панелі.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "На\\s+центральній\\s+панелі.*?\\.\\s*", "", $rx)
-  $t = [regex]::Replace($t, "На\\s+правій\\s+панелі.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Ð”ÐµÑ‚ÐµÐºÑ†Ñ–Ñ\\s+Ð¾Ð±â€™Ñ”ÐºÑ‚Ñ–Ð²\\.?\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Ð’Ð¸ÑÐ²Ð»ÐµÐ½Ð¾\\s+\\d+\\s+Ð¾Ð±.?Ñ”ÐºÑ‚Ñ–Ð²\\s+Ð¼Ð¾Ð´ÐµÐ»Ð»ÑŽ\\s+DETR\\.?\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Ð£\\s+Ð½Ð¸Ð¶Ð½Ñ–Ð¹\\s+Ñ‡Ð°ÑÑ‚Ð¸Ð½Ñ–.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Ð›Ñ–Ð²Ð°\\s+Ð¿Ð°Ð½ÐµÐ»ÑŒ.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "Ð¦ÐµÐ½Ñ‚Ñ€Ð°Ð»ÑŒÐ½Ð°\\s+Ð¿Ð°Ð½ÐµÐ»ÑŒ.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "ÐŸÑ€Ð°Ð²Ð°\\s+Ð¿Ð°Ð½ÐµÐ»ÑŒ.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "ÐÐ°\\s+Ð»Ñ–Ð²Ñ–Ð¹\\s+Ð¿Ð°Ð½ÐµÐ»Ñ–.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "ÐÐ°\\s+Ñ†ÐµÐ½Ñ‚Ñ€Ð°Ð»ÑŒÐ½Ñ–Ð¹\\s+Ð¿Ð°Ð½ÐµÐ»Ñ–.*?\\.\\s*", "", $rx)
+  $t = [regex]::Replace($t, "ÐÐ°\\s+Ð¿Ñ€Ð°Ð²Ñ–Ð¹\\s+Ð¿Ð°Ð½ÐµÐ»Ñ–.*?\\.\\s*", "", $rx)
   # Tidy.
   $t = ($t -replace "\s{2,}", " ").Trim()
   return $t
@@ -218,7 +218,7 @@ function Find-BodyHeadingIndexByPrefix {
       $t = Get-ParagraphText -Paragraph $Paras[$k] -Nsm $Nsm
       if (-not $t) { continue }
       if ($t.StartsWith("4.5")) { break }
-      if ($t -match "^(Рис\\.|Рисунок)\\s") { return $c }
+      if ($t -match "^(Ð Ð¸Ñ\\.|Ð Ð¸ÑÑƒÐ½Ð¾Ðº)\\s") { return $c }
     }
   }
   return $cands[$cands.Count - 1]
@@ -226,7 +226,7 @@ function Find-BodyHeadingIndexByPrefix {
 
 function Get-FigureInfoFromCaption {
   param([Parameter(Mandatory = $true)][string]$CaptionText)
-  $m = [regex]::Match($CaptionText, "^Рис\\.\\s*4\\.(\\d+)\\s*—\\s*(.+)$")
+  $m = [regex]::Match($CaptionText, "^Ð Ð¸Ñ\\.\\s*4\\.(\\d+)\\s*â€”\\s*(.+)$")
   if (-not $m.Success) { return $null }
   $figNo = [int]$m.Groups[1].Value
   $label = $m.Groups[2].Value.Trim()
@@ -306,7 +306,7 @@ try {
   for ($i = $h441; $i -lt $h45; $i++) {
     $t = Get-ParagraphText -Paragraph $paras[$i] -Nsm $nsm
     if (-not $t) { continue }
-    if ($t -match "^Рис\\.") {
+    if ($t -match "^Ð Ð¸Ñ\\.") {
       $s = Paragraph-GetStyle -Paragraph $paras[$i] -Nsm $nsm
       if ($s -and -not ($stats.style_caption_used -contains $s)) { $stats.style_caption_used += $s }
     } elseif ($t -match "^(4\\.4\\.)") {
@@ -327,7 +327,7 @@ try {
     for ($j = $startIdx + 1; $j -lt $endIdx; $j++) {
       $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
       if (-not $pt) { continue }
-      if ($pt -match "^(Рис\\.|Рисунок)") { continue }
+      if ($pt -match "^(Ð Ð¸Ñ\\.|Ð Ð¸ÑÑƒÐ½Ð¾Ðº)") { continue }
       if ($pt -match "^4\\.4\\.") { continue }
       $bodyStyle = Paragraph-GetStyle -Paragraph $paras[$j] -Nsm $nsm
       if ($bodyStyle) { break }
@@ -339,7 +339,7 @@ try {
     for ($j = $windowEnd - 1; $j -ge ($startIdx + 1); $j--) {
       $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
       if (-not $pt) { continue }
-      if ($pt.StartsWith("Інтерпретація панелей") -or $pt.StartsWith("У всіх наведених далі ілюстраціях розділу 4.4")) {
+      if ($pt.StartsWith("Ð†Ð½Ñ‚ÐµÑ€Ð¿Ñ€ÐµÑ‚Ð°Ñ†Ñ–Ñ Ð¿Ð°Ð½ÐµÐ»ÐµÐ¹") -or $pt.StartsWith("Ð£ Ð²ÑÑ–Ñ… Ð½Ð°Ð²ÐµÐ´ÐµÐ½Ð¸Ñ… Ð´Ð°Ð»Ñ– Ñ–Ð»ÑŽÑÑ‚Ñ€Ð°Ñ†Ñ–ÑÑ… Ñ€Ð¾Ð·Ð´Ñ–Ð»Ñƒ 4.4")) {
         Remove-ParagraphAt -Paras $paras -Index $j
         $stats.legends_removed++
       }
@@ -350,7 +350,7 @@ try {
     $endIdx = if ($si + 1 -lt $subHeads.Count) { Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix $subHeads[$si + 1].pref -StartAt $startIdx } else { Find-BodyHeadingIndexByPrefix -Paras $paras -Nsm $nsm -Prefix "4.5" -StartAt $startIdx }
     if ($null -eq $endIdx) { $endIdx = $paras.Count }
 
-    $legendText = "Інтерпретація панелей: ліва — оптичний потік; центральна — карта глибини; права — об’єднане зображення. Службові фрази про детекцію (кількість виявлених об’єктів) не дублюються в кожному описі."
+    $legendText = "Ð†Ð½Ñ‚ÐµÑ€Ð¿Ñ€ÐµÑ‚Ð°Ñ†Ñ–Ñ Ð¿Ð°Ð½ÐµÐ»ÐµÐ¹: Ð»Ñ–Ð²Ð° â€” Ð¾Ð¿Ñ‚Ð¸Ñ‡Ð½Ð¸Ð¹ Ð¿Ð¾Ñ‚Ñ–Ðº; Ñ†ÐµÐ½Ñ‚Ñ€Ð°Ð»ÑŒÐ½Ð° â€” ÐºÐ°Ñ€Ñ‚Ð° Ð³Ð»Ð¸Ð±Ð¸Ð½Ð¸; Ð¿Ñ€Ð°Ð²Ð° â€” Ð¾Ð±â€™Ñ”Ð´Ð½Ð°Ð½Ðµ Ð·Ð¾Ð±Ñ€Ð°Ð¶ÐµÐ½Ð½Ñ. Ð¡Ð»ÑƒÐ¶Ð±Ð¾Ð²Ñ– Ñ„Ñ€Ð°Ð·Ð¸ Ð¿Ñ€Ð¾ Ð´ÐµÑ‚ÐµÐºÑ†Ñ–ÑŽ (ÐºÑ–Ð»ÑŒÐºÑ–ÑÑ‚ÑŒ Ð²Ð¸ÑÐ²Ð»ÐµÐ½Ð¸Ñ… Ð¾Ð±â€™Ñ”ÐºÑ‚Ñ–Ð²) Ð½Ðµ Ð´ÑƒÐ±Ð»ÑŽÑŽÑ‚ÑŒÑÑ Ð² ÐºÐ¾Ð¶Ð½Ð¾Ð¼Ñƒ Ð¾Ð¿Ð¸ÑÑ–."
     Insert-ParagraphAfterIndex -Xml $xml -Nsm $nsm -Paras $paras -AfterIndex $startIdx -StyleVal $bodyStyle -Text $legendText
     $stats.legends_inserted++
 
@@ -365,7 +365,7 @@ try {
     $capInfo = @{}
     for ($j = $startIdx + 1; $j -lt $endIdx; $j++) {
       $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
-      if ($pt -match "^Рис\\.\\s*4\\.(\\d+)") {
+      if ($pt -match "^Ð Ð¸Ñ\\.\\s*4\\.(\\d+)") {
         [void]$capIdx.Add($j)
         $capInfo[$j] = Get-FigureInfoFromCaption -CaptionText $pt
       }
@@ -418,7 +418,7 @@ try {
         if (-not $pt) { continue }
         if (Paragraph-HasDrawing -Paragraph $paras[$j] -Nsm $nsm) { continue }
         if ($pt -match "^4\\.4\\.") { continue }
-        if ($pt -match "^Рис\\.") { continue }
+        if ($pt -match "^Ð Ð¸Ñ\\.") { continue }
         $targetIdx = $j
         $targetStyle = Paragraph-GetStyle -Paragraph $paras[$j] -Nsm $nsm
         if (-not $targetStyle) { $targetStyle = $bodyStyle }
@@ -439,17 +439,17 @@ try {
       for ($j = $spanStart; $j -le $spanEnd; $j++) {
         $pt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
         if (-not $pt) { continue }
-        if ($pt -match "^Рис\\.") { continue }
+        if ($pt -match "^Ð Ð¸Ñ\\.") { continue }
         if ($pt -match "^4\\.4\\.") { continue }
         if (Paragraph-HasDrawing -Paragraph $paras[$j] -Nsm $nsm) { continue }
 
         $low = $pt.ToLowerInvariant()
-        if ($low.StartsWith("ліва панель") -or $low.StartsWith("центральна панель") -or $low.StartsWith("права панель")) {
+        if ($low.StartsWith("Ð»Ñ–Ð²Ð° Ð¿Ð°Ð½ÐµÐ»ÑŒ") -or $low.StartsWith("Ñ†ÐµÐ½Ñ‚Ñ€Ð°Ð»ÑŒÐ½Ð° Ð¿Ð°Ð½ÐµÐ»ÑŒ") -or $low.StartsWith("Ð¿Ñ€Ð°Ð²Ð° Ð¿Ð°Ð½ÐµÐ»ÑŒ")) {
           $toDelete.Add($j) | Out-Null
           $stats.panel_paras_deleted++
           continue
         }
-        if ($low.StartsWith("детекція") -or $low.StartsWith("виявлено") -or $low.StartsWith("у нижній частині")) {
+        if ($low.StartsWith("Ð´ÐµÑ‚ÐµÐºÑ†Ñ–Ñ") -or $low.StartsWith("Ð²Ð¸ÑÐ²Ð»ÐµÐ½Ð¾") -or $low.StartsWith("Ñƒ Ð½Ð¸Ð¶Ð½Ñ–Ð¹ Ñ‡Ð°ÑÑ‚Ð¸Ð½Ñ–")) {
           $toDelete.Add($j) | Out-Null
           $stats.detection_paras_deleted++
           continue
@@ -480,9 +480,9 @@ try {
       $figNums = @($block.figs | Sort-Object)
       $n = $figNums[0]
       $m = $figNums[$figNums.Count - 1]
-      $range = if ($n -eq $m) { "4.$n" } else { "4.$n–4.$m" }
+      $range = if ($n -eq $m) { "4.$n" } else { "4.$nâ€“4.$m" }
       $citeMerged = Merge-CitationBlocks -Blocks ($cites | Select-Object -Unique)
-      $s4 = "На рис. $range наведено результати для $($block.prefix)."
+      $s4 = "ÐÐ° Ñ€Ð¸Ñ. $range Ð½Ð°Ð²ÐµÐ´ÐµÐ½Ð¾ Ñ€ÐµÐ·ÑƒÐ»ÑŒÑ‚Ð°Ñ‚Ð¸ Ð´Ð»Ñ $($block.prefix)."
       if ($citeMerged) { $s4 = $s4.TrimEnd('.') + " " + $citeMerged + "." }
 
       $final = (($sentOut[0].TrimEnd('.') + ".").Trim()) + " " +
@@ -517,3 +517,4 @@ try {
     Remove-Item -LiteralPath $workDir -Recurse -Force
   }
 }
+
