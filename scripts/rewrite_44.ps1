@@ -194,6 +194,17 @@ function Clean-BoilerplateFromText {
   return $t
 }
 
+function Strip-PanelPhrasesOnly {
+  param([Parameter(Mandatory = $true)][string]$Text)
+  $rx = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+  $t = $Text
+  $t = [regex]::Replace($t, "На\s+лівій\s+панелі\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\s+центральній\s+панелі\s*", "", $rx)
+  $t = [regex]::Replace($t, "На\s+правій\s+панелі\s*", "", $rx)
+  $t = ($t -replace "\s{2,}", " ").Trim()
+  return $t
+}
+
 function Fix-BareCitationListsInString {
   param(
     [Parameter(Mandatory = $true)][string]$Text,
@@ -259,6 +270,7 @@ $stats = [ordered]@{
   deleted_boilerplate_paras = 0
   cleaned_inline_boilerplate_paras = 0
   deleted_panel_standalone_global = 0
+  stripped_panel_phrases_in_drawing_paras = 0
   citation_semicolons_normalized = 0
   citation_lists_wrapped = 0
   citation_lists_skipped_mixed = 0
@@ -482,7 +494,18 @@ try {
         if (-not $pt) { continue }
         if ($pt -match "^4\.4\.[1-5]\b") { continue }
         if ($pt -match "^Рис\.") { continue }
-        if (Paragraph-HasDrawing -Paragraph $paras[$i] -Nsm $nsm) { continue }
+        if (Paragraph-HasDrawing -Paragraph $paras[$i] -Nsm $nsm) {
+          foreach ($tNode in @($paras[$i].SelectNodes(".//w:t", $nsm))) {
+            $old = $tNode.InnerText
+            if (-not $old) { continue }
+            $new = Strip-PanelPhrasesOnly -Text $old
+            if ($new -ne $old) {
+              $tNode.InnerText = $new
+              $stats.stripped_panel_phrases_in_drawing_paras++
+            }
+          }
+          continue
+        }
         if (Paragraph-HasBreak -Paragraph $paras[$i] -Nsm $nsm) { continue }
 
         if (Is-BoilerplateParagraphText -Text $pt) {
