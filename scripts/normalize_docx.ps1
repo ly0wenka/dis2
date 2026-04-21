@@ -329,6 +329,13 @@ try {
       $j++
     }
 
+    # Recompute bounds after paragraph merges/removals to ensure we scan the full §4.4.1–§4.4.5 range.
+    $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
+    $idx441 = Find-ParaIndexByPrefix -Prefix "4.4.1" -StartAt $startSearchAt
+    $idx445 = Find-ParaIndexByPrefix -Prefix "4.4.5" -StartAt $idx441
+    $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt ($idx445 + 1)
+    if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
+
     # Remove remaining embedded DETR detection boilerplate inside paragraphs (when it was merged into longer text).
     for ($j = $idx441; $j -lt $idxAfter445; $j++) {
       $p = $paras[$j]
