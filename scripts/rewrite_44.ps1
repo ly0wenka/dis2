@@ -83,7 +83,7 @@ function New-ParagraphWithStyleAndText {
   $pPr = $Xml.CreateElement("w", "pPr", $Nsm.LookupNamespace("w"))
   if ($StyleVal) {
     $pStyle = $Xml.CreateElement("w", "pStyle", $Nsm.LookupNamespace("w"))
-    $pStyle.SetAttribute("w:val", $Nsm.LookupNamespace("w"), $StyleVal)
+    $pStyle.SetAttribute("val", $Nsm.LookupNamespace("w"), $StyleVal)
     [void]$pPr.AppendChild($pStyle)
   }
   [void]$pNew.AppendChild($pPr)
