@@ -50,6 +50,7 @@ try {
     fix44_panel_dupes_removed = 0
     fix44_detection_paras_removed = 0
     fix44_detection_text_removed = 0
+    fix44_ref_paras_removed = 0
     fix44_ref_inserted = 0
   }
 
@@ -134,14 +135,21 @@ try {
       $stats.fix44_ref_inserted++
     }
 
-    # Remove repeated DETR detection boilerplate like "6 об’єктів виявлено" across §4.4.1–§4.4.5
+    # Normalize repeated DETR detection boilerplate and reference sentences:
+    # 1) remove any existing consolidated notes / reference lines (to avoid duplicates),
+    # 2) insert exactly one of each at the right place.
+    #
+    # Remove existing consolidated notes and standalone detection lines.
     for ($j = $idxAfter445 - 1; $j -ge $idx441; $j--) {
       $txt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
       if (-not $txt) { continue }
       $lower = $txt.ToLowerInvariant()
+      if ($txt -match "блок\\s+детекції\\s+моделі\\s+DETR") {
+        [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
+        $stats.fix44_detection_paras_removed++
+        continue
+      }
       if ($txt -match "об.?єктів\\s+виявлено" -or $lower.StartsWith("детекція об")) {
-        # Keep the consolidated note; remove other standalone detection lines.
-        if ($txt -match "блок\\s+детекції\\s+моделі\\s+DETR") { continue }
         [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
         $stats.fix44_detection_paras_removed++
       }
@@ -151,47 +159,41 @@ try {
     $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
     if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
 
-    # Ensure exactly one consolidated note (applies to all figures in §4.4.1–§4.4.5)
-    $noteText = "У всіх наведених далі ілюстраціях розділу 4.4 блок детекції моделі DETR відображає кількість виявлених у кадрі динамічних об’єктів (наприклад, «6 об’єктів виявлено»). Це значення використовується для подальшого зв’язування оцінених параметрів руху та глибини з конкретними об’єктами; тому однакові службові пояснення не дублюються для кожного рисунка окремо."
-    $hasNote = $false
-    $j = $idx441
-    while ($j -lt $idxAfter445) {
+    # Remove any existing reference lines (4.4.4 and 4.4.5) so we can re-insert cleanly.
+    for ($j = $idxAfter445 - 1; $j -ge $idx441; $j--) {
       $txt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
-      if ($txt -match "блок\\s+детекції\\s+моделі\\s+DETR") {
-        if ($hasNote) {
-          [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
-          $stats.fix44_detection_paras_removed++
-          $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
-          $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
-          if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
-          continue
-        }
-        $hasNote = $true
+      if (-not $txt) { continue }
+      if ($txt -match "^Параметри\\s+руху\\s+обчиснюються\\s+за\\s+постановкою") {
+        [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
+        $stats.fix44_ref_paras_removed++
+        continue
       }
-      $j++
+      if ($txt -match "^Параметри\\s+руху\\s+для\\s+локальної\\s+моделі") {
+        [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
+        $stats.fix44_ref_paras_removed++
+      }
     }
-    if (-not $hasNote) {
-      Insert-ParagraphAfter -AfterIndex $idx441 -Text $noteText
-      $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
-      $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
-      if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
-    }
+    $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
+    $idx441 = Find-ParaIndexByPrefix -Prefix "4.4.1" -StartAt $startSearchAt
+    $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+    if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
 
-    # Insert reference sentences under 4.4.4 and 4.4.5 headings (if present) (idempotent)
+    # Insert one consolidated note once (applies to all figures in §4.4.1–§4.4.5)
+    $noteText = "У всіх наведених далі ілюстраціях розділу 4.4 блок детекції моделі DETR відображає кількість виявлених у кадрі динамічних об’єктів (наприклад, «6 об’єктів виявлено»). Це значення використовується для подальшого зв’язування оцінених параметрів руху та глибини з конкретними об’єктами; тому однакові службові пояснення не дублюються для кожного рисунка окремо."
+    Insert-ParagraphAfter -AfterIndex $idx441 -Text $noteText
+    $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
+    $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+    if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
+
+    # Insert reference sentences under 4.4.4 and 4.4.5 headings (exactly once).
     $idx444 = Find-ParaIndexByPrefix -Prefix "4.4.4" -StartAt $idx441
     if ($null -ne $idx444) {
-      $nextTxt = Get-ParagraphText -Paragraph $paras[$idx444 + 1] -Nsm $nsm
-      if ($nextTxt -notmatch "^Параметри\\s+руху\\s+обчиснюються\\s+за\\s+постановкою") {
-        Insert-ParagraphAfter -AfterIndex $idx444 -Text "Параметри руху обчиснюються за постановкою та ітераційною схемою розд. 2, формули (2.1)-(2.10)."
-      }
+      Insert-ParagraphAfter -AfterIndex $idx444 -Text "Параметри руху обчиснюються за постановкою та ітераційною схемою розд. 2, формули (2.1)-(2.10)."
     }
     $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
     $idx445 = Find-ParaIndexByPrefix -Prefix "4.4.5" -StartAt $idx441
     if ($null -ne $idx445) {
-      $nextTxt = Get-ParagraphText -Paragraph $paras[$idx445 + 1] -Nsm $nsm
-      if ($nextTxt -notmatch "^Параметри\\s+руху\\s+для\\s+локальної\\s+моделі") {
-        Insert-ParagraphAfter -AfterIndex $idx445 -Text "Параметри руху для локальної моделі оцінювання руху наведено в розд. 2, формули (2.11)-(2.24)."
-      }
+      Insert-ParagraphAfter -AfterIndex $idx445 -Text "Параметри руху для локальної моделі оцінювання руху наведено в розд. 2, формули (2.11)-(2.24)."
     }
     $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
     $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
