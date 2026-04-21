@@ -153,22 +153,25 @@ try {
 
     # Ensure exactly one consolidated note (applies to all figures in §4.4.1–§4.4.5)
     $noteText = "У всіх наведених далі ілюстраціях розділу 4.4 блок детекції моделі DETR відображає кількість виявлених у кадрі динамічних об’єктів (наприклад, «6 об’єктів виявлено»). Це значення використовується для подальшого зв’язування оцінених параметрів руху та глибини з конкретними об’єктами; тому однакові службові пояснення не дублюються для кожного рисунка окремо."
-    $noteIdxs = @()
-    for ($j = $idx441; $j -lt $idxAfter445; $j++) {
+    $hasNote = $false
+    $j = $idx441
+    while ($j -lt $idxAfter445) {
       $txt = Get-ParagraphText -Paragraph $paras[$j] -Nsm $nsm
-      if ($txt -match "блок\\s+детекції\\s+моделі\\s+DETR") { $noteIdxs += $j }
-    }
-    if ($noteIdxs.Count -eq 0) {
-      Insert-ParagraphAfter -AfterIndex $idx441 -Text $noteText
-      $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
-      $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
-      if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
-    } elseif ($noteIdxs.Count -gt 1) {
-      # Remove duplicates, keep the first note.
-      for ($k = $noteIdxs.Count - 1; $k -ge 1; $k--) {
-        [void]$paras[$noteIdxs[$k]].ParentNode.RemoveChild($paras[$noteIdxs[$k]])
-        $stats.fix44_detection_paras_removed++
+      if ($txt -match "блок\\s+детекції\\s+моделі\\s+DETR") {
+        if ($hasNote) {
+          [void]$paras[$j].ParentNode.RemoveChild($paras[$j])
+          $stats.fix44_detection_paras_removed++
+          $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
+          $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
+          if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
+          continue
+        }
+        $hasNote = $true
       }
+      $j++
+    }
+    if (-not $hasNote) {
+      Insert-ParagraphAfter -AfterIndex $idx441 -Text $noteText
       $paras = $xml.SelectNodes("//w:body/w:p", $nsm)
       $idxAfter445 = Find-ParaIndexByPrefix -Prefix "4.5" -StartAt $idx441
       if ($null -eq $idxAfter445) { $idxAfter445 = $paras.Count }
@@ -325,7 +328,8 @@ try {
 
       $newFull = $full
       $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,260}DETR[^\\.]{0,260}\\.?\\s*", ""
-      $newFull = $newFull -replace "У нижній частині[^\\.]{0,320}об.?єктів[^\\.]{0,120}виявлено[^\\.]{0,160}\\.?\\s*", ""
+      $newFull = $newFull -replace "Детекц[іяі][^\\.]{0,80}нижній частині[^\\.]{0,360}виявлено[^\\.]{0,200}\\.?\\s*", ""
+      $newFull = $newFull -replace "У нижній частині[^\\.]{0,360}виявлено[^\\.]{0,200}\\.?\\s*", ""
       $newFull = $newFull -replace "«\\s*\\d+\\s+об.?єктів\\s+виявлено\\s*»\\s*", ""
       $newFull = $newFull -replace "\\s{2,}", " "
       $newFull = $newFull.Trim()
